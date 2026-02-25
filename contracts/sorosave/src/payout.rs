@@ -40,6 +40,19 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
         group.status = GroupStatus::Completed;
         storage::set_group(env, &group);
 
+        // Return deposits to all members on successful completion
+        if group.deposit_amount > 0 {
+            let deposits = storage::get_deposits(env, group_id);
+            let token_client = soroban_sdk::token::Client::new(env, &group.token);
+            let contract_addr = env.current_contract_address();
+            
+            for member in group.members.iter() {
+                if let Some(deposit) = deposits.get(member.clone()) {
+                    token_client.transfer(&contract_addr, &member, &deposit);
+                }
+            }
+        }
+
         env.events()
             .publish((crate::symbol_short!("grp_comp"),), group_id);
     } else {

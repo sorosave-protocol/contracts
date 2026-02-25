@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env, Vec};
+use soroban_sdk::{Address, Env, Map, Vec};
 
 use crate::types::{DataKey, Dispute, RoundInfo, SavingsGroup};
 
@@ -120,6 +120,22 @@ pub fn set_dispute(env: &Env, group_id: u64, dispute: &Dispute) {
 pub fn remove_dispute(env: &Env, group_id: u64) {
     let key = DataKey::Dispute(group_id);
     env.storage().persistent().remove(&key);
+}
+
+// --- Deposits ---
+
+pub fn get_deposits(env: &Env, group_id: u64) -> Map<Address, i128> {
+    let key = DataKey::Deposits(group_id);
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(Map::new(env))
+}
+
+pub fn set_deposits(env: &Env, group_id: u64, deposits: &Map<Address, i128>) {
+    let key = DataKey::Deposits(group_id);
+    env.storage().persistent().set(&key, deposits);
+    extend_persistent_ttl(env, &key);
 }
 
 // --- TTL Management ---

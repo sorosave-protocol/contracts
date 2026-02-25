@@ -35,6 +35,7 @@ impl SoroSaveContract {
         name: String,
         token: Address,
         contribution_amount: i128,
+        deposit_amount: i128,
         cycle_length: u64,
         max_members: u32,
     ) -> Result<u64, ContractError> {
@@ -44,6 +45,7 @@ impl SoroSaveContract {
             name,
             token,
             contribution_amount,
+            deposit_amount,
             cycle_length,
             max_members,
         )

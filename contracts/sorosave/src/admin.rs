@@ -127,18 +127,32 @@ pub fn emergency_withdraw(env: &Env, admin: Address, group_id: u64) -> Result<()
         return Err(ContractError::GroupCompleted);
     }
 
-    // Calculate remaining balance and distribute equally
     let token_client = soroban_sdk::token::Client::new(env, &group.token);
     let contract_addr = env.current_contract_address();
     let balance = token_client.balance(&contract_addr);
 
     if balance > 0 {
-        let per_member = balance / group.members.len() as i128;
-        if per_member > 0 {
-            for member in group.members.iter() {
-                token_client.transfer(&contract_addr, &member, &per_member);
+        // Calculate total deposits (these will be forfeited on default)
+        let deposits = storage::get_deposits(env, group_id);
+        let mut total_deposits = 0i128;
+        for member in group.members.iter() {
+            if let Some(deposit) = deposits.get(member) {
+                total_deposits += deposit;
             }
         }
+
+        // Distributable balance = total balance - deposits (deposits are forfeited)
+        let distributable = balance - total_deposits;
+        
+        if distributable > 0 {
+            let per_member = distributable / group.members.len() as i128;
+            if per_member > 0 {
+                for member in group.members.iter() {
+                    token_client.transfer(&contract_addr, &member, &per_member);
+                }
+            }
+        }
+        // Note: Deposits remain in contract (forfeited on emergency/default)
     }
 
     let mut group = group;

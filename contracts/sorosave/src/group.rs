@@ -10,12 +10,16 @@ pub fn create_group(
     name: String,
     token: Address,
     contribution_amount: i128,
+    deposit_amount: i128,
     cycle_length: u64,
     max_members: u32,
 ) -> Result<u64, ContractError> {
     admin.require_auth();
 
     if contribution_amount <= 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+    if deposit_amount < 0 {
         return Err(ContractError::InvalidAmount);
     }
     if max_members < 2 {
@@ -32,8 +36,9 @@ pub fn create_group(
         id: group_id,
         name,
         admin: admin.clone(),
-        token,
+        token: token.clone(),
         contribution_amount,
+        deposit_amount,
         cycle_length,
         max_members,
         members,
@@ -46,6 +51,16 @@ pub fn create_group(
 
     storage::set_group(env, &group);
     storage::add_member_group(env, &admin, group_id);
+
+    // Collect deposit from admin if required
+    if deposit_amount > 0 {
+        let token_client = soroban_sdk::token::Client::new(env, &token);
+        token_client.transfer(&admin, &env.current_contract_address(), &deposit_amount);
+        
+        let mut deposits = storage::get_deposits(env, group_id);
+        deposits.set(admin.clone(), deposit_amount);
+        storage::set_deposits(env, group_id, &deposits);
+    }
 
     env.events()
         .publish((crate::symbol_short!("grp_creat"),), group_id);
@@ -71,6 +86,16 @@ pub fn join_group(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
         if m == member {
             return Err(ContractError::AlreadyMember);
         }
+    }
+
+    // Collect deposit if required
+    if group.deposit_amount > 0 {
+        let token_client = soroban_sdk::token::Client::new(env, &group.token);
+        token_client.transfer(&member, &env.current_contract_address(), &group.deposit_amount);
+        
+        let mut deposits = storage::get_deposits(env, group_id);
+        deposits.set(member.clone(), group.deposit_amount);
+        storage::set_deposits(env, group_id, &deposits);
     }
 
     group.members.push_back(member.clone());
@@ -109,6 +134,17 @@ pub fn leave_group(env: &Env, member: Address, group_id: u64) -> Result<(), Cont
 
     if !found {
         return Err(ContractError::NotMember);
+    }
+
+    // Return deposit if member is leaving during Forming phase
+    if group.deposit_amount > 0 {
+        let mut deposits = storage::get_deposits(env, group_id);
+        if let Some(deposit) = deposits.get(member.clone()) {
+            let token_client = soroban_sdk::token::Client::new(env, &group.token);
+            token_client.transfer(&env.current_contract_address(), &member, &deposit);
+            deposits.remove(member.clone());
+            storage::set_deposits(env, group_id, &deposits);
+        }
     }
 
     group.members = new_members;

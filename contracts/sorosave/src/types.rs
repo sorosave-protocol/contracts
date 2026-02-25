@@ -20,6 +20,7 @@ pub struct SavingsGroup {
     pub admin: Address,
     pub token: Address,
     pub contribution_amount: i128,
+    pub deposit_amount: i128,
     pub cycle_length: u64,
     pub max_members: u32,
     pub members: Vec<Address>,
@@ -61,4 +62,5 @@ pub enum DataKey {
     Round(u64, u32),
     MemberGroups(Address),
     Dispute(u64),
+    Deposits(u64),
 }

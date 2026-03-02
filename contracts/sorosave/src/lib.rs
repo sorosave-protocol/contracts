@@ -74,6 +74,49 @@ impl SoroSaveContract {
         group::get_member_groups(&env, member)
     }
 
+    // ─── Group Templates ────────────────────────────────────────────
+
+    /// Save a group template for quick creation later.
+    /// Max 10 templates per admin.
+    pub fn save_template(
+        env: Env,
+        admin: Address,
+        name: String,
+        token: Address,
+        contribution_amount: i128,
+        cycle_length: u64,
+        max_members: u32,
+    ) -> Result<u32, ContractError> {
+        group::save_template(
+            &env,
+            admin,
+            name,
+            token,
+            contribution_amount,
+            cycle_length,
+            max_members,
+        )
+    }
+
+    /// Get a saved template by ID.
+    pub fn get_template(
+        env: Env,
+        admin: Address,
+        template_id: u32,
+    ) -> Result<GroupTemplate, ContractError> {
+        group::get_template(&env, admin, template_id)
+    }
+
+    /// Create a new group from a saved template.
+    pub fn create_from_template(
+        env: Env,
+        admin: Address,
+        template_id: u32,
+        name: String,
+    ) -> Result<u64, ContractError> {
+        group::create_from_template(&env, admin, template_id, name)
+    }
+
     // ─── Contributions ──────────────────────────────────────────────
 
     /// Contribute to the current round of a group.

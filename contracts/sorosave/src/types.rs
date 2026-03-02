@@ -51,6 +51,18 @@ pub struct Dispute {
     pub raised_at: u64,
 }
 
+/// Group template for quick creation of similar groups.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct GroupTemplate {
+    pub id: u32,
+    pub name: String,
+    pub token: Address,
+    pub contribution_amount: i128,
+    pub cycle_length: u64,
+    pub max_members: u32,
+}
+
 /// Storage keys for all contract data.
 #[contracttype]
 #[derive(Clone)]
@@ -61,4 +73,6 @@ pub enum DataKey {
     Round(u64, u32),
     MemberGroups(Address),
     Dispute(u64),
+    TemplateCounter(Address),
+    Template(Address, u32),
 }

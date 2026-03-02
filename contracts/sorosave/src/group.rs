@@ -2,7 +2,7 @@ use soroban_sdk::{Address, Env, Map, String, Vec};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{GroupStatus, RoundInfo, SavingsGroup};
+use crate::types::{GroupStatus, GroupTemplate, RoundInfo, SavingsGroup};
 
 pub fn create_group(
     env: &Env,
@@ -170,4 +170,81 @@ pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError
 
 pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
     storage::get_member_groups(env, &member)
+}
+
+// --- Template Functions ---
+
+const MAX_TEMPLATES_PER_ADMIN: u32 = 10;
+
+pub fn save_template(
+    env: &Env,
+    admin: Address,
+    name: String,
+    token: Address,
+    contribution_amount: i128,
+    cycle_length: u64,
+    max_members: u32,
+) -> Result<u32, ContractError> {
+    admin.require_auth();
+
+    if contribution_amount <= 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+    if max_members < 2 {
+        return Err(ContractError::InsufficientMembers);
+    }
+
+    let current_count = storage::get_template_counter(env, &admin);
+    if current_count >= MAX_TEMPLATES_PER_ADMIN {
+        return Err(ContractError::TemplateLimitReached);
+    }
+
+    let template_id = current_count + 1;
+    let template = GroupTemplate {
+        id: template_id,
+        name,
+        token,
+        contribution_amount,
+        cycle_length,
+        max_members,
+    };
+
+    storage::set_template(env, &admin, &template);
+    storage::set_template_counter(env, &admin, template_id);
+
+    env.events()
+        .publish((crate::symbol_short!("tmpl_save"),), (admin, template_id));
+
+    Ok(template_id)
+}
+
+pub fn get_template(
+    env: &Env,
+    admin: Address,
+    template_id: u32,
+) -> Result<GroupTemplate, ContractError> {
+    storage::get_template(env, &admin, template_id)
+        .ok_or(ContractError::TemplateNotFound)
+}
+
+pub fn create_from_template(
+    env: &Env,
+    admin: Address,
+    template_id: u32,
+    name: String,
+) -> Result<u64, ContractError> {
+    admin.require_auth();
+
+    let template = storage::get_template(env, &admin, template_id)
+        .ok_or(ContractError::TemplateNotFound)?;
+
+    create_group(
+        env,
+        admin,
+        name,
+        template.token,
+        template.contribution_amount,
+        template.cycle_length,
+        template.max_members,
+    )
 }

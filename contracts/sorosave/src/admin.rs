@@ -193,8 +193,11 @@ pub fn vote_on_dispute(
     storage::set_dispute_votes(env, group_id, &votes);
 
     let quorum_bps = storage::get_dispute_quorum_bps(env, group_id) as u64;
-    let approvals_bps = (votes.approvals as u64 * 10_000) / votes.total_members as u64;
-    let rejections_bps = (votes.rejections as u64 * 10_000) / votes.total_members as u64;
+    let total_members = votes.total_members as u64;
+
+    // Use ceil division so thresholds like 6667 bps can represent 2/3 membership.
+    let approvals_bps = (votes.approvals as u64 * 10_000 + total_members - 1) / total_members;
+    let rejections_bps = (votes.rejections as u64 * 10_000 + total_members - 1) / total_members;
 
     if approvals_bps >= quorum_bps {
         group.status = GroupStatus::Active;

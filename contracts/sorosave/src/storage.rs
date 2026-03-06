@@ -1,6 +1,6 @@
 use soroban_sdk::{Address, Env, Vec};
 
-use crate::types::{DataKey, Dispute, RoundInfo, SavingsGroup};
+use crate::types::{DataKey, Dispute, DisputeVotes, RoundInfo, SavingsGroup};
 
 const INSTANCE_TTL_THRESHOLD: u32 = 100;
 const INSTANCE_TTL_EXTEND: u32 = 500;
@@ -119,6 +119,54 @@ pub fn set_dispute(env: &Env, group_id: u64, dispute: &Dispute) {
 
 pub fn remove_dispute(env: &Env, group_id: u64) {
     let key = DataKey::Dispute(group_id);
+    env.storage().persistent().remove(&key);
+}
+
+pub fn get_dispute_votes(env: &Env, group_id: u64) -> Option<DisputeVotes> {
+    let key = DataKey::DisputeVotes(group_id);
+    env.storage().persistent().get(&key)
+}
+
+pub fn set_dispute_votes(env: &Env, group_id: u64, votes: &DisputeVotes) {
+    let key = DataKey::DisputeVotes(group_id);
+    env.storage().persistent().set(&key, votes);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn remove_dispute_votes(env: &Env, group_id: u64) {
+    let key = DataKey::DisputeVotes(group_id);
+    env.storage().persistent().remove(&key);
+}
+
+pub fn has_dispute_vote(env: &Env, group_id: u64, member: &Address) -> bool {
+    let key = DataKey::DisputeVote(group_id, member.clone());
+    env.storage().persistent().has(&key)
+}
+
+pub fn set_dispute_vote(env: &Env, group_id: u64, member: &Address, approve: bool) {
+    let key = DataKey::DisputeVote(group_id, member.clone());
+    env.storage().persistent().set(&key, &approve);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn remove_dispute_vote(env: &Env, group_id: u64, member: &Address) {
+    let key = DataKey::DisputeVote(group_id, member.clone());
+    env.storage().persistent().remove(&key);
+}
+
+pub fn get_dispute_quorum_bps(env: &Env, group_id: u64) -> u32 {
+    let key = DataKey::DisputeQuorumBps(group_id);
+    env.storage().persistent().get(&key).unwrap_or(5_001)
+}
+
+pub fn set_dispute_quorum_bps(env: &Env, group_id: u64, quorum_bps: u32) {
+    let key = DataKey::DisputeQuorumBps(group_id);
+    env.storage().persistent().set(&key, &quorum_bps);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn remove_dispute_quorum_bps(env: &Env, group_id: u64) {
+    let key = DataKey::DisputeQuorumBps(group_id);
     env.storage().persistent().remove(&key);
 }
 

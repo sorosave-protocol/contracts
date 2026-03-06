@@ -145,6 +145,26 @@ impl SoroSaveContract {
         admin::resolve_dispute(&env, admin, group_id)
     }
 
+    /// Configure dispute quorum in basis points (default 5001 = >50%).
+    pub fn set_dispute_quorum(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        quorum_bps: u32,
+    ) -> Result<(), ContractError> {
+        admin::set_dispute_quorum(&env, admin, group_id, quorum_bps)
+    }
+
+    /// Vote on an active dispute. Auto-resolves once quorum is reached.
+    pub fn vote_on_dispute(
+        env: Env,
+        member: Address,
+        group_id: u64,
+        approve: bool,
+    ) -> Result<(), ContractError> {
+        admin::vote_on_dispute(&env, member, group_id, approve)
+    }
+
     /// Emergency withdraw — distribute remaining funds proportionally to all members.
     pub fn emergency_withdraw(
         env: Env,

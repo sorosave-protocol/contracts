@@ -51,6 +51,15 @@ pub struct Dispute {
     pub raised_at: u64,
 }
 
+/// Voting state for dispute resolution.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct DisputeVotes {
+    pub approvals: u32,
+    pub rejections: u32,
+    pub total_members: u32,
+}
+
 /// Storage keys for all contract data.
 #[contracttype]
 #[derive(Clone)]
@@ -61,4 +70,7 @@ pub enum DataKey {
     Round(u64, u32),
     MemberGroups(Address),
     Dispute(u64),
+    DisputeVotes(u64),
+    DisputeQuorumBps(u64),
+    DisputeVote(u64, Address),
 }

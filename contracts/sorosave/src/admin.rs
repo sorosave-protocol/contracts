@@ -2,7 +2,7 @@ use soroban_sdk::{Address, Env, String};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{Dispute, GroupStatus};
+use crate::types::{Dispute, DisputeVotes, GroupStatus};
 
 pub fn pause_group(env: &Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
     admin.require_auth();
@@ -83,6 +83,15 @@ pub fn raise_dispute(
     group.status = GroupStatus::Disputed;
     storage::set_group(env, &group);
     storage::set_dispute(env, group_id, &dispute);
+    storage::set_dispute_votes(
+        env,
+        group_id,
+        &DisputeVotes {
+            approvals: 0,
+            rejections: 0,
+            total_members: group.members.len(),
+        },
+    );
 
     env.events()
         .publish((crate::symbol_short!("dispute"),), (group_id, member));
@@ -106,9 +115,109 @@ pub fn resolve_dispute(env: &Env, admin: Address, group_id: u64) -> Result<(), C
     group.status = GroupStatus::Active;
     storage::set_group(env, &group);
     storage::remove_dispute(env, group_id);
+    storage::remove_dispute_votes(env, group_id);
+    for m in group.members.iter() {
+        storage::remove_dispute_vote(env, group_id, &m);
+    }
 
     env.events()
         .publish((crate::symbol_short!("resolved"),), group_id);
+
+    Ok(())
+}
+
+pub fn set_dispute_quorum(
+    env: &Env,
+    admin: Address,
+    group_id: u64,
+    quorum_bps: u32,
+) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    if admin != group.admin && admin != storage::get_admin(env) {
+        return Err(ContractError::Unauthorized);
+    }
+
+    // Must be within (0%, 100%]
+    if quorum_bps == 0 || quorum_bps > 10_000 {
+        return Err(ContractError::InvalidAmount);
+    }
+
+    storage::set_dispute_quorum_bps(env, group_id, quorum_bps);
+    Ok(())
+}
+
+pub fn vote_on_dispute(
+    env: &Env,
+    member: Address,
+    group_id: u64,
+    approve: bool,
+) -> Result<(), ContractError> {
+    member.require_auth();
+
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    if group.status != GroupStatus::Disputed {
+        return Err(ContractError::GroupNotActive);
+    }
+
+    // membership check
+    let mut is_member = false;
+    for m in group.members.iter() {
+        if m == member {
+            is_member = true;
+            break;
+        }
+    }
+    if !is_member {
+        return Err(ContractError::NotMember);
+    }
+
+    if storage::has_dispute_vote(env, group_id, &member) {
+        return Err(ContractError::AlreadyContributed);
+    }
+
+    let mut votes = storage::get_dispute_votes(env, group_id).unwrap_or(DisputeVotes {
+        approvals: 0,
+        rejections: 0,
+        total_members: group.members.len(),
+    });
+
+    if approve {
+        votes.approvals += 1;
+    } else {
+        votes.rejections += 1;
+    }
+
+    storage::set_dispute_vote(env, group_id, &member, approve);
+    storage::set_dispute_votes(env, group_id, &votes);
+
+    let quorum_bps = storage::get_dispute_quorum_bps(env, group_id) as u64;
+    let approvals_bps = (votes.approvals as u64 * 10_000) / votes.total_members as u64;
+    let rejections_bps = (votes.rejections as u64 * 10_000) / votes.total_members as u64;
+
+    if approvals_bps >= quorum_bps {
+        group.status = GroupStatus::Active;
+        storage::set_group(env, &group);
+        storage::remove_dispute(env, group_id);
+        storage::remove_dispute_votes(env, group_id);
+        for m in group.members.iter() {
+            storage::remove_dispute_vote(env, group_id, &m);
+        }
+        env.events()
+            .publish((crate::symbol_short!("dsp_appv"),), group_id);
+    } else if rejections_bps >= quorum_bps {
+        // rejected dispute keeps group active as well
+        group.status = GroupStatus::Active;
+        storage::set_group(env, &group);
+        storage::remove_dispute(env, group_id);
+        storage::remove_dispute_votes(env, group_id);
+        for m in group.members.iter() {
+            storage::remove_dispute_vote(env, group_id, &m);
+        }
+        env.events()
+            .publish((crate::symbol_short!("dsp_rejt"),), group_id);
+    }
 
     Ok(())
 }

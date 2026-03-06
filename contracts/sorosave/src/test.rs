@@ -222,3 +222,31 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+fn test_dispute_voting_auto_resolve_with_quorum() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.raise_dispute(
+        &member1,
+        &group_id,
+        &String::from_str(&env, "Dispute for voting"),
+    );
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Disputed);
+
+    // 3 members total; set quorum to 66.67% (2/3)
+    client.set_dispute_quorum(&admin, &group_id, &6667);
+
+    client.vote_on_dispute(&member1, &group_id, &true);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Disputed);
+
+    client.vote_on_dispute(&member2, &group_id, &true);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+}

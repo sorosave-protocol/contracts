@@ -9,6 +9,7 @@ pub fn create_group(
     admin: Address,
     name: String,
     token: Address,
+    accepted_tokens: Vec<Address>,
     contribution_amount: i128,
     cycle_length: u64,
     max_members: u32,
@@ -28,11 +29,17 @@ pub fn create_group(
     let mut members = Vec::new(env);
     members.push_back(admin.clone());
 
+    let mut resolved_tokens = accepted_tokens;
+    if resolved_tokens.is_empty() {
+        resolved_tokens.push_back(token.clone());
+    }
+
     let group = SavingsGroup {
         id: group_id,
         name,
         admin: admin.clone(),
         token,
+        accepted_tokens: resolved_tokens,
         contribution_amount,
         cycle_length,
         max_members,

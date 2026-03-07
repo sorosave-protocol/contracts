@@ -19,6 +19,7 @@ pub struct SavingsGroup {
     pub name: String,
     pub admin: Address,
     pub token: Address,
+    pub accepted_tokens: Vec<Address>,
     pub contribution_amount: i128,
     pub cycle_length: u64,
     pub max_members: u32,

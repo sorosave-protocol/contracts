@@ -34,6 +34,7 @@ impl SoroSaveContract {
         admin: Address,
         name: String,
         token: Address,
+        accepted_tokens: Vec<Address>,
         contribution_amount: i128,
         cycle_length: u64,
         max_members: u32,
@@ -43,6 +44,7 @@ impl SoroSaveContract {
             admin,
             name,
             token,
+            accepted_tokens,
             contribution_amount,
             cycle_length,
             max_members,
@@ -77,8 +79,13 @@ impl SoroSaveContract {
     // ─── Contributions ──────────────────────────────────────────────
 
     /// Contribute to the current round of a group.
-    pub fn contribute(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
-        contribution::contribute(&env, member, group_id)
+    pub fn contribute(
+        env: Env,
+        member: Address,
+        group_id: u64,
+        token: Address,
+    ) -> Result<(), ContractError> {
+        contribution::contribute(&env, member, group_id, token)
     }
 
     /// Get the status of a specific round.

@@ -1,4 +1,4 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String, Vec};
 
 use crate::types::GroupStatus;
 use crate::{SoroSaveContract, SoroSaveContractClient};
@@ -28,10 +28,14 @@ fn create_test_group(
     admin: &Address,
     token: &Address,
 ) -> u64 {
+    let mut accepted_tokens = Vec::new(env);
+    accepted_tokens.push_back(token.clone());
+
     client.create_group(
         admin,
         &String::from_str(env, "Test Savings Group"),
         token,
+        &accepted_tokens,
         &1_000_000, // 1 token (7 decimals)
         &86400,     // 1 day cycle
         &5,         // max 5 members
@@ -116,10 +120,14 @@ fn test_full_cycle() {
     token_sac.mint(&member1, &10_000_000);
 
     // Create a new group with the token we control
+    let mut accepted_tokens = Vec::new(&env);
+    accepted_tokens.push_back(token_id.address());
+
     let group_id = client.create_group(
         &admin,
         &String::from_str(&env, "Full Cycle Test"),
         &token_id.address(),
+        &accepted_tokens,
         &1_000_000,
         &86400,
         &5,
@@ -128,8 +136,8 @@ fn test_full_cycle() {
     client.start_group(&admin, &group_id);
 
     // Round 1: both contribute
-    client.contribute(&admin, &group_id);
-    client.contribute(&member1, &group_id);
+    client.contribute(&admin, &group_id, &token_id.address());
+    client.contribute(&member1, &group_id, &token_id.address());
 
     let round = client.get_round_status(&group_id, &1);
     assert!(round.is_complete);
@@ -141,8 +149,8 @@ fn test_full_cycle() {
     let group = client.get_group(&group_id);
     assert_eq!(group.current_round, 2);
 
-    client.contribute(&admin, &group_id);
-    client.contribute(&member1, &group_id);
+    client.contribute(&admin, &group_id, &token_id.address());
+    client.contribute(&member1, &group_id, &token_id.address());
 
     client.distribute_payout(&group_id);
 
@@ -156,10 +164,14 @@ fn test_member_groups() {
     let (env, admin, client, token) = setup_env();
 
     let group1 = create_test_group(&env, &client, &admin, &token);
+    let mut accepted_tokens = Vec::new(&env);
+    accepted_tokens.push_back(token.clone());
+
     let group2 = client.create_group(
         &admin,
         &String::from_str(&env, "Second Group"),
         &token,
+        &accepted_tokens,
         &500_000,
         &43200,
         &3,

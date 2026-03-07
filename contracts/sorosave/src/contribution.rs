@@ -4,7 +4,12 @@ use crate::errors::ContractError;
 use crate::storage;
 use crate::types::{GroupStatus, RoundInfo};
 
-pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
+pub fn contribute(
+    env: &Env,
+    member: Address,
+    group_id: u64,
+    token: Address,
+) -> Result<(), ContractError> {
     member.require_auth();
 
     let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
@@ -37,8 +42,20 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
         return Err(ContractError::AlreadyContributed);
     }
 
+    // Validate token is accepted by this group
+    let mut token_allowed = false;
+    for t in group.accepted_tokens.iter() {
+        if t == token {
+            token_allowed = true;
+            break;
+        }
+    }
+    if !token_allowed {
+        return Err(ContractError::InvalidAmount);
+    }
+
     // Transfer tokens from member to this contract
-    let token_client = soroban_sdk::token::Client::new(env, &group.token);
+    let token_client = soroban_sdk::token::Client::new(env, &token);
     token_client.transfer(
         &member,
         &env.current_contract_address(),
@@ -58,7 +75,7 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
 
     env.events().publish(
         (crate::symbol_short!("contrib"),),
-        (group_id, member, group.contribution_amount),
+        (group_id, member, token, group.contribution_amount),
     );
 
     Ok(())

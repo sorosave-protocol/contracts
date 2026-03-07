@@ -222,3 +222,100 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+fn test_emergency_withdraw_unequal_contributions_proportional_and_no_stuck_funds() {
+    let (env, admin, client, _token) = setup_env();
+
+    // Create token with mint authority we control in this test.
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin.clone());
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    let member4 = Address::generate(&env);
+
+    for m in [admin.clone(), member1.clone(), member2.clone(), member3.clone(), member4.clone()] {
+        token_sac.mint(&m, &20_000_000);
+    }
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Emergency Withdraw Unequal"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+    client.join_group(&member4, &group_id);
+    client.start_group(&admin, &group_id);
+
+    // Round 1: all 5 contribute.
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.contribute(&member2, &group_id);
+    client.contribute(&member3, &group_id);
+    client.contribute(&member4, &group_id);
+    client.distribute_payout(&group_id);
+
+    // Round 2: all 5 contribute.
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.contribute(&member2, &group_id);
+    client.contribute(&member3, &group_id);
+    client.contribute(&member4, &group_id);
+    client.distribute_payout(&group_id);
+
+    // Round 3 (incomplete): only admin + member1 contribute (unequal state).
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+
+    let token_client = soroban_sdk::token::Client::new(&env, &token_id.address());
+    let contract_addr = client.address.clone();
+
+    // Snapshot balances before emergency withdraw.
+    let b_admin_before = token_client.balance(&admin);
+    let b_m1_before = token_client.balance(&member1);
+    let b_m2_before = token_client.balance(&member2);
+    let b_m3_before = token_client.balance(&member3);
+    let b_m4_before = token_client.balance(&member4);
+
+    let contract_before = token_client.balance(&contract_addr);
+    assert!(contract_before > 0);
+
+    // Protocol admin executes emergency withdraw.
+    client.emergency_withdraw(&admin, &group_id);
+
+    let b_admin_after = token_client.balance(&admin);
+    let b_m1_after = token_client.balance(&member1);
+    let b_m2_after = token_client.balance(&member2);
+    let b_m3_after = token_client.balance(&member3);
+    let b_m4_after = token_client.balance(&member4);
+
+    let admin_delta = b_admin_after - b_admin_before;
+    let m1_delta = b_m1_after - b_m1_before;
+    let m2_delta = b_m2_after - b_m2_before;
+    let m3_delta = b_m3_after - b_m3_before;
+    let m4_delta = b_m4_after - b_m4_before;
+
+    // admin/member1 each contributed 3 times; others 2 times.
+    assert!(admin_delta >= m2_delta);
+    assert!(m1_delta >= m2_delta);
+    assert_eq!(m2_delta, m3_delta);
+    assert_eq!(m3_delta, m4_delta);
+
+    let contract_after = token_client.balance(&contract_addr);
+    assert_eq!(contract_after, 0);
+
+    let total_distributed = admin_delta + m1_delta + m2_delta + m3_delta + m4_delta;
+    assert_eq!(total_distributed, contract_before);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Completed);
+}

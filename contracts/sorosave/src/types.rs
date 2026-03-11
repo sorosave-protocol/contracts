@@ -1,5 +1,13 @@
 use soroban_sdk::{contracttype, Address, Map, String, Vec};
 
+/// Contribution model used by a savings group.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum ContributionType {
+    Fixed,
+    Percentage,
+}
+
 /// Status of a savings group throughout its lifecycle.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
@@ -19,6 +27,7 @@ pub struct SavingsGroup {
     pub name: String,
     pub admin: Address,
     pub token: Address,
+    pub contribution_type: ContributionType,
     pub contribution_amount: i128,
     pub cycle_length: u64,
     pub max_members: u32,
@@ -60,5 +69,6 @@ pub enum DataKey {
     Group(u64),
     Round(u64, u32),
     MemberGroups(Address),
+    MemberBaseAmount(u64, Address),
     Dispute(u64),
 }

@@ -49,9 +49,51 @@ impl SoroSaveContract {
         )
     }
 
+    /// Create a new savings group with an explicit contribution model.
+    pub fn create_group_with_type(
+        env: Env,
+        admin: Address,
+        name: String,
+        token: Address,
+        contribution_amount: i128,
+        contribution_type: ContributionType,
+        cycle_length: u64,
+        max_members: u32,
+    ) -> Result<u64, ContractError> {
+        group::create_group_with_type(
+            &env,
+            admin,
+            name,
+            token,
+            contribution_amount,
+            contribution_type,
+            cycle_length,
+            max_members,
+        )
+    }
+
     /// Join an existing group that is still forming.
     pub fn join_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
         group::join_group(&env, member, group_id)
+    }
+
+    /// Set a member's base amount for percentage-based groups while still forming.
+    pub fn set_member_base_amount(
+        env: Env,
+        member: Address,
+        group_id: u64,
+        base_amount: i128,
+    ) -> Result<(), ContractError> {
+        group::set_member_base_amount(&env, member, group_id, base_amount)
+    }
+
+    /// Get a member's declared base amount for a group.
+    pub fn get_member_base_amount(
+        env: Env,
+        member: Address,
+        group_id: u64,
+    ) -> Result<i128, ContractError> {
+        group::get_member_base_amount(&env, member, group_id)
     }
 
     /// Leave a group (only allowed while group is still forming).

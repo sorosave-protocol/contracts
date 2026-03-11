@@ -103,6 +103,28 @@ pub fn remove_member_group(env: &Env, member: &Address, group_id: u64) {
     extend_persistent_ttl(env, &key);
 }
 
+// --- Member Base Amounts ---
+
+pub fn get_member_base_amount(env: &Env, group_id: u64, member: &Address) -> Option<i128> {
+    let key = DataKey::MemberBaseAmount(group_id, member.clone());
+    let result = env.storage().persistent().get(&key);
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+    result
+}
+
+pub fn set_member_base_amount(env: &Env, group_id: u64, member: &Address, base_amount: i128) {
+    let key = DataKey::MemberBaseAmount(group_id, member.clone());
+    env.storage().persistent().set(&key, &base_amount);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn remove_member_base_amount(env: &Env, group_id: u64, member: &Address) {
+    let key = DataKey::MemberBaseAmount(group_id, member.clone());
+    env.storage().persistent().remove(&key);
+}
+
 // --- Dispute ---
 
 #[allow(dead_code)]

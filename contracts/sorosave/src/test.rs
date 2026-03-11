@@ -1,6 +1,10 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env, String,
+};
 
-use crate::types::GroupStatus;
+use crate::types::{ContributionType, GroupStatus};
 use crate::{SoroSaveContract, SoroSaveContractClient};
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
@@ -46,6 +50,7 @@ fn test_create_group() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, admin);
+    assert_eq!(group.contribution_type, ContributionType::Fixed);
     assert_eq!(group.contribution_amount, 1_000_000);
     assert_eq!(group.max_members, 5);
     assert_eq!(group.status, GroupStatus::Forming);
@@ -221,4 +226,50 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_percentage_group_dynamic_pot() {
+    let (env, admin, client, _token) = setup_env();
+
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = StellarAssetClient::new(&env, &token_id.address());
+    let token_reader = TokenClient::new(&env, &token_id.address());
+
+    let member1 = Address::generate(&env);
+    token_client.mint(&admin, &20_000_000);
+    token_client.mint(&member1, &20_000_000);
+
+    let group_id = client.create_group_with_type(
+        &admin,
+        &String::from_str(&env, "Percentage Group"),
+        &token_id.address(),
+        &1_000, // 10.00% in basis points
+        &ContributionType::Percentage,
+        &86400,
+        &5,
+    );
+
+    client.join_group(&member1, &group_id);
+    client.set_member_base_amount(&admin, &group_id, &5_000_000);
+    client.set_member_base_amount(&member1, &group_id, &10_000_000);
+
+    assert_eq!(client.get_member_base_amount(&admin, &group_id), 5_000_000);
+    assert_eq!(
+        client.get_member_base_amount(&member1, &group_id),
+        10_000_000
+    );
+
+    client.start_group(&admin, &group_id);
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+
+    let round = client.get_round_status(&group_id, &1);
+    assert!(round.is_complete);
+    assert_eq!(round.total_contributed, 1_500_000);
+
+    client.distribute_payout(&group_id);
+    assert_eq!(token_reader.balance(&admin), 21_000_000);
+    assert_eq!(token_reader.balance(&member1), 19_000_000);
 }

@@ -2,7 +2,9 @@ use soroban_sdk::{Address, Env, Map, String, Vec};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{GroupStatus, RoundInfo, SavingsGroup};
+use crate::types::{ContributionType, GroupStatus, RoundInfo, SavingsGroup};
+
+const MAX_PERCENTAGE_BPS: i128 = 10_000;
 
 pub fn create_group(
     env: &Env,
@@ -13,9 +15,35 @@ pub fn create_group(
     cycle_length: u64,
     max_members: u32,
 ) -> Result<u64, ContractError> {
+    create_group_with_type(
+        env,
+        admin,
+        name,
+        token,
+        contribution_amount,
+        ContributionType::Fixed,
+        cycle_length,
+        max_members,
+    )
+}
+
+pub fn create_group_with_type(
+    env: &Env,
+    admin: Address,
+    name: String,
+    token: Address,
+    contribution_amount: i128,
+    contribution_type: ContributionType,
+    cycle_length: u64,
+    max_members: u32,
+) -> Result<u64, ContractError> {
     admin.require_auth();
 
     if contribution_amount <= 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+    if contribution_type == ContributionType::Percentage && contribution_amount > MAX_PERCENTAGE_BPS
+    {
         return Err(ContractError::InvalidAmount);
     }
     if max_members < 2 {
@@ -33,6 +61,7 @@ pub fn create_group(
         name,
         admin: admin.clone(),
         token,
+        contribution_type,
         contribution_amount,
         cycle_length,
         max_members,
@@ -83,6 +112,69 @@ pub fn join_group(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     Ok(())
 }
 
+pub fn set_member_base_amount(
+    env: &Env,
+    member: Address,
+    group_id: u64,
+    base_amount: i128,
+) -> Result<(), ContractError> {
+    member.require_auth();
+
+    if base_amount <= 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if group.status != GroupStatus::Forming {
+        return Err(ContractError::GroupNotForming);
+    }
+    if group.contribution_type != ContributionType::Percentage {
+        return Err(ContractError::InvalidAmount);
+    }
+
+    let mut is_member = false;
+    for existing_member in group.members.iter() {
+        if existing_member == member {
+            is_member = true;
+            break;
+        }
+    }
+    if !is_member {
+        return Err(ContractError::NotMember);
+    }
+
+    storage::set_member_base_amount(env, group_id, &member, base_amount);
+
+    env.events().publish(
+        (crate::symbol_short!("base_set"),),
+        (group_id, member, base_amount),
+    );
+
+    Ok(())
+}
+
+pub fn get_member_base_amount(
+    env: &Env,
+    member: Address,
+    group_id: u64,
+) -> Result<i128, ContractError> {
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    let mut is_member = false;
+    for existing_member in group.members.iter() {
+        if existing_member == member {
+            is_member = true;
+            break;
+        }
+    }
+    if !is_member {
+        return Err(ContractError::NotMember);
+    }
+
+    storage::get_member_base_amount(env, group_id, &member).ok_or(ContractError::BaseAmountRequired)
+}
+
 pub fn leave_group(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
     member.require_auth();
 
@@ -114,6 +206,7 @@ pub fn leave_group(env: &Env, member: Address, group_id: u64) -> Result<(), Cont
     group.members = new_members;
     storage::set_group(env, &group);
     storage::remove_member_group(env, &member, group_id);
+    storage::remove_member_base_amount(env, group_id, &member);
 
     env.events()
         .publish((crate::symbol_short!("grp_leav"),), (group_id, member));
@@ -136,6 +229,13 @@ pub fn start_group(env: &Env, admin: Address, group_id: u64) -> Result<(), Contr
 
     if group.members.len() < 2 {
         return Err(ContractError::InsufficientMembers);
+    }
+    if group.contribution_type == ContributionType::Percentage {
+        for member in group.members.iter() {
+            if storage::get_member_base_amount(env, group_id, &member).is_none() {
+                return Err(ContractError::BaseAmountRequired);
+            }
+        }
     }
 
     // Set payout order to member join order (can be randomized later)

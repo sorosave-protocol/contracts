@@ -16,6 +16,14 @@ pub use types::*;
 #[contract]
 pub struct SoroSaveContract;
 
+fn require_protocol_active(env: &Env) -> Result<(), ContractError> {
+    if storage::is_protocol_paused(env) {
+        Err(ContractError::ProtocolPaused)
+    } else {
+        Ok(())
+    }
+}
+
 #[contractimpl]
 impl SoroSaveContract {
     /// Initialize the protocol with a global admin.
@@ -24,6 +32,7 @@ impl SoroSaveContract {
             panic!("already initialized");
         }
         storage::set_admin(&env, &admin);
+        storage::set_protocol_paused(&env, false);
     }
 
     // ─── Group Lifecycle ────────────────────────────────────────────
@@ -38,6 +47,7 @@ impl SoroSaveContract {
         cycle_length: u64,
         max_members: u32,
     ) -> Result<u64, ContractError> {
+        require_protocol_active(&env)?;
         group::create_group(
             &env,
             admin,
@@ -51,16 +61,19 @@ impl SoroSaveContract {
 
     /// Join an existing group that is still forming.
     pub fn join_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         group::join_group(&env, member, group_id)
     }
 
     /// Leave a group (only allowed while group is still forming).
     pub fn leave_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         group::leave_group(&env, member, group_id)
     }
 
     /// Start the group rounds. Only the group admin can call this.
     pub fn start_group(env: Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         group::start_group(&env, admin, group_id)
     }
 
@@ -78,6 +91,7 @@ impl SoroSaveContract {
 
     /// Contribute to the current round of a group.
     pub fn contribute(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         contribution::contribute(&env, member, group_id)
     }
 
@@ -105,6 +119,7 @@ impl SoroSaveContract {
     /// Distribute the pot to the current round's recipient. Anyone can call this
     /// once all contributions are in.
     pub fn distribute_payout(env: Env, group_id: u64) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         payout::distribute_payout(&env, group_id)
     }
 
@@ -120,13 +135,58 @@ impl SoroSaveContract {
 
     // ─── Admin / Governance ─────────────────────────────────────────
 
+    /// Pause all protocol mutations. Only the protocol admin can call this.
+    pub fn pause_protocol(env: Env, admin: Address) -> Result<(), ContractError> {
+        admin.require_auth();
+
+        if admin != storage::get_admin(&env) {
+            return Err(ContractError::Unauthorized);
+        }
+
+        if storage::is_protocol_paused(&env) {
+            return Err(ContractError::ProtocolPaused);
+        }
+
+        storage::set_protocol_paused(&env, true);
+        env.events()
+            .publish((symbol_short!("prot_paus"),), admin);
+
+        Ok(())
+    }
+
+    /// Resume protocol mutations after a global pause.
+    pub fn unpause_protocol(env: Env, admin: Address) -> Result<(), ContractError> {
+        admin.require_auth();
+
+        if admin != storage::get_admin(&env) {
+            return Err(ContractError::Unauthorized);
+        }
+
+        if !storage::is_protocol_paused(&env) {
+            return Err(ContractError::ProtocolNotPaused);
+        }
+
+        storage::set_protocol_paused(&env, false);
+        env.events()
+            .publish((symbol_short!("prot_resm"),), admin);
+
+        Ok(())
+    }
+
+    /// Read the current global protocol pause state.
+    pub fn is_protocol_paused(env: Env) -> bool {
+        storage::is_protocol_paused(&env)
+    }
+
     /// Pause an active group.
     pub fn pause_group(env: Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         admin::pause_group(&env, admin, group_id)
     }
 
     /// Resume a paused group.
     pub fn resume_group(env: Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         admin::resume_group(&env, admin, group_id)
     }
 
@@ -137,11 +197,13 @@ impl SoroSaveContract {
         group_id: u64,
         reason: String,
     ) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         admin::raise_dispute(&env, member, group_id, reason)
     }
 
     /// Resolve a dispute (group admin or protocol admin).
     pub fn resolve_dispute(env: Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         admin::resolve_dispute(&env, admin, group_id)
     }
 
@@ -151,6 +213,7 @@ impl SoroSaveContract {
         admin: Address,
         group_id: u64,
     ) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         admin::emergency_withdraw(&env, admin, group_id)
     }
 
@@ -161,6 +224,7 @@ impl SoroSaveContract {
         group_id: u64,
         new_admin: Address,
     ) -> Result<(), ContractError> {
+        require_protocol_active(&env)?;
         admin::set_group_admin(&env, current_admin, group_id, new_admin)
     }
 }

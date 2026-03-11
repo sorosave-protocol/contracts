@@ -56,6 +56,7 @@ pub struct Dispute {
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
+    ProtocolPaused,
     GroupCounter,
     Group(u64),
     Round(u64, u32),

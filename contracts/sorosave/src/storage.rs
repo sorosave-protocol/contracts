@@ -22,6 +22,20 @@ pub fn has_admin(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Admin)
 }
 
+pub fn is_protocol_paused(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::ProtocolPaused)
+        .unwrap_or(false)
+}
+
+pub fn set_protocol_paused(env: &Env, paused: bool) {
+    env.storage()
+        .instance()
+        .set(&DataKey::ProtocolPaused, &paused);
+    extend_instance_ttl(env);
+}
+
 // --- Group Counter ---
 
 pub fn get_group_counter(env: &Env) -> u64 {

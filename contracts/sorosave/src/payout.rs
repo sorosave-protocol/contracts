@@ -6,6 +6,7 @@ use crate::types::{GroupStatus, RoundInfo};
 
 pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> {
     let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    let protocol_config = storage::get_protocol_config(env);
 
     if group.status != GroupStatus::Active {
         return Err(ContractError::GroupNotActive);
@@ -20,10 +21,27 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
 
     // Transfer the pot to the round's recipient
     let token_client = soroban_sdk::token::Client::new(env, &group.token);
+    let fee_amount =
+        round_info.total_contributed * protocol_config.protocol_fee_bps as i128 / 10_000;
+    let recipient_amount = round_info.total_contributed - fee_amount;
+
+    if fee_amount > 0 {
+        token_client.transfer(
+            &env.current_contract_address(),
+            &protocol_config.treasury,
+            &fee_amount,
+        );
+
+        env.events().publish(
+            (crate::symbol_short!("prot_fee"),),
+            (group_id, protocol_config.treasury.clone(), fee_amount),
+        );
+    }
+
     token_client.transfer(
         &env.current_contract_address(),
         &round_info.recipient,
-        &round_info.total_contributed,
+        &recipient_amount,
     );
 
     env.events().publish(
@@ -31,7 +49,7 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
         (
             group_id,
             round_info.recipient.clone(),
-            round_info.total_contributed,
+            recipient_amount,
         ),
     );
 

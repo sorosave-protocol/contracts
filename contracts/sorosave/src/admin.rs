@@ -173,3 +173,45 @@ pub fn set_group_admin(
 
     Ok(())
 }
+
+pub fn set_protocol_fee_bps(env: &Env, admin: Address, fee_bps: u32) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    if admin != storage::get_admin(env) {
+        return Err(ContractError::Unauthorized);
+    }
+
+    if fee_bps > 10_000 {
+        return Err(ContractError::InvalidFeeBps);
+    }
+
+    let mut config = storage::get_protocol_config(env);
+    config.protocol_fee_bps = fee_bps;
+    storage::set_protocol_config(env, &config);
+
+    env.events()
+        .publish((crate::symbol_short!("fee_set"),), fee_bps);
+
+    Ok(())
+}
+
+pub fn set_protocol_treasury(
+    env: &Env,
+    admin: Address,
+    treasury: Address,
+) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    if admin != storage::get_admin(env) {
+        return Err(ContractError::Unauthorized);
+    }
+
+    let mut config = storage::get_protocol_config(env);
+    config.treasury = treasury.clone();
+    storage::set_protocol_config(env, &config);
+
+    env.events()
+        .publish((crate::symbol_short!("treasury"),), treasury);
+
+    Ok(())
+}

@@ -1,6 +1,6 @@
 use soroban_sdk::{Address, Env, Vec};
 
-use crate::types::{DataKey, Dispute, RoundInfo, SavingsGroup};
+use crate::types::{DataKey, Dispute, ProtocolConfig, RoundInfo, SavingsGroup};
 
 const INSTANCE_TTL_THRESHOLD: u32 = 100;
 const INSTANCE_TTL_EXTEND: u32 = 500;
@@ -20,6 +20,15 @@ pub fn set_admin(env: &Env, admin: &Address) {
 
 pub fn has_admin(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Admin)
+}
+
+pub fn get_protocol_config(env: &Env) -> ProtocolConfig {
+    env.storage().instance().get(&DataKey::ProtocolConfig).unwrap()
+}
+
+pub fn set_protocol_config(env: &Env, config: &ProtocolConfig) {
+    env.storage().instance().set(&DataKey::ProtocolConfig, config);
+    extend_instance_ttl(env);
 }
 
 // --- Group Counter ---

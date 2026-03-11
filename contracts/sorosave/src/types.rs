@@ -51,11 +51,20 @@ pub struct Dispute {
     pub raised_at: u64,
 }
 
+/// Protocol-level fee configuration.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProtocolConfig {
+    pub protocol_fee_bps: u32,
+    pub treasury: Address,
+}
+
 /// Storage keys for all contract data.
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
+    ProtocolConfig,
     GroupCounter,
     Group(u64),
     Round(u64, u32),

@@ -24,6 +24,13 @@ impl SoroSaveContract {
             panic!("already initialized");
         }
         storage::set_admin(&env, &admin);
+        storage::set_protocol_config(
+            &env,
+            &ProtocolConfig {
+                protocol_fee_bps: 0,
+                treasury: admin,
+            },
+        );
     }
 
     // ─── Group Lifecycle ────────────────────────────────────────────
@@ -72,6 +79,11 @@ impl SoroSaveContract {
     /// Get all group IDs a member belongs to.
     pub fn get_member_groups(env: Env, member: Address) -> Vec<u64> {
         group::get_member_groups(&env, member)
+    }
+
+    /// Get the current protocol fee configuration.
+    pub fn get_protocol_config(env: Env) -> ProtocolConfig {
+        storage::get_protocol_config(&env)
     }
 
     // ─── Contributions ──────────────────────────────────────────────
@@ -162,6 +174,24 @@ impl SoroSaveContract {
         new_admin: Address,
     ) -> Result<(), ContractError> {
         admin::set_group_admin(&env, current_admin, group_id, new_admin)
+    }
+
+    /// Update the protocol fee rate in basis points.
+    pub fn set_protocol_fee_bps(
+        env: Env,
+        admin: Address,
+        fee_bps: u32,
+    ) -> Result<(), ContractError> {
+        admin::set_protocol_fee_bps(&env, admin, fee_bps)
+    }
+
+    /// Update the treasury address that receives protocol fees.
+    pub fn set_protocol_treasury(
+        env: Env,
+        admin: Address,
+        treasury: Address,
+    ) -> Result<(), ContractError> {
+        admin::set_protocol_treasury(&env, admin, treasury)
     }
 }
 

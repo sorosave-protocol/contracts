@@ -1,6 +1,13 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+extern crate std;
 
-use crate::types::GroupStatus;
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env, String,
+};
+use self::std::panic::{catch_unwind, AssertUnwindSafe};
+
+use crate::types::{GroupStatus, ProtocolConfig};
 use crate::{SoroSaveContract, SoroSaveContractClient};
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
@@ -36,6 +43,13 @@ fn create_test_group(
         &86400,     // 1 day cycle
         &5,         // max 5 members
     )
+}
+
+fn assert_panics<F, R>(f: F)
+where
+    F: FnOnce() -> R,
+{
+    assert!(catch_unwind(AssertUnwindSafe(f)).is_err());
 }
 
 #[test]
@@ -221,4 +235,68 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_protocol_fee_defaults_to_zero_and_admin_treasury() {
+    let (_env, admin, client, _token) = setup_env();
+
+    assert_eq!(
+        client.get_protocol_config(),
+        ProtocolConfig {
+            protocol_fee_bps: 0,
+            treasury: admin,
+        }
+    );
+}
+
+#[test]
+fn test_only_admin_can_update_protocol_fee_config() {
+    let (env, admin, client, _token) = setup_env();
+    let outsider = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    assert_panics(|| client.set_protocol_fee_bps(&outsider, &50));
+    assert_panics(|| client.set_protocol_treasury(&outsider, &treasury));
+    assert_panics(|| client.set_protocol_fee_bps(&admin, &10_001));
+
+    client.set_protocol_fee_bps(&admin, &50);
+    client.set_protocol_treasury(&admin, &treasury);
+
+    assert_eq!(
+        client.get_protocol_config(),
+        ProtocolConfig {
+            protocol_fee_bps: 50,
+            treasury,
+        }
+    );
+}
+
+#[test]
+fn test_distribute_payout_deducts_protocol_fee() {
+    let (env, admin, client, token) = setup_env();
+    let member1 = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let token_admin = StellarAssetClient::new(&env, &token);
+    token_admin.mint(&member1, &10_000_000);
+
+    client.set_protocol_fee_bps(&admin, &500);
+    client.set_protocol_treasury(&admin, &treasury);
+
+    let token_client = TokenClient::new(&env, &token);
+    let admin_start = token_client.balance(&admin);
+    let member1_start = token_client.balance(&member1);
+    let treasury_start = token_client.balance(&treasury);
+
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.distribute_payout(&group_id);
+
+    assert_eq!(token_client.balance(&treasury), treasury_start + 100_000);
+    assert_eq!(token_client.balance(&admin), admin_start - 1_000_000 + 1_900_000);
+    assert_eq!(token_client.balance(&member1), member1_start - 1_000_000);
 }

@@ -74,6 +74,11 @@ impl SoroSaveContract {
         group::get_member_groups(&env, member)
     }
 
+    /// Get the aggregate on-chain reputation for a member.
+    pub fn get_reputation(env: Env, member: Address) -> MemberReputation {
+        storage::get_member_reputation(&env, &member)
+    }
+
     // ─── Contributions ──────────────────────────────────────────────
 
     /// Contribute to the current round of a group.

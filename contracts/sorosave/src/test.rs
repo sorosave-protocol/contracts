@@ -1,6 +1,6 @@
 use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
 
-use crate::types::GroupStatus;
+use crate::types::{GroupStatus, MemberReputation};
 use crate::{SoroSaveContract, SoroSaveContractClient};
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
@@ -36,6 +36,13 @@ fn create_test_group(
         &86400,     // 1 day cycle
         &5,         // max 5 members
     )
+}
+
+fn mint_test_tokens(env: &Env, token: &Address, recipients: &[Address], amount: i128) {
+    let token_client = StellarAssetClient::new(env, token);
+    for recipient in recipients {
+        token_client.mint(recipient, &amount);
+    }
 }
 
 #[test]
@@ -221,4 +228,77 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_reputation_defaults_to_zero() {
+    let (env, _admin, client, _token) = setup_env();
+    let outsider = Address::generate(&env);
+
+    assert_eq!(
+        client.get_reputation(&outsider),
+        MemberReputation {
+            groups_completed: 0,
+            on_time_contributions: 0,
+            defaults: 0,
+        }
+    );
+}
+
+#[test]
+fn test_reputation_updates_after_contributions_and_completion() {
+    let (env, admin, client, token) = setup_env();
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+
+    mint_test_tokens(
+        &env,
+        &token,
+        &[admin.clone(), member1.clone(), member2.clone()],
+        10_000_000,
+    );
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Reputation Group"),
+        &token,
+        &1_000_000,
+        &86400,
+        &3,
+    );
+
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.start_group(&admin, &group_id);
+
+    for round in 1..=3 {
+        client.contribute(&admin, &group_id);
+        client.contribute(&member1, &group_id);
+        client.contribute(&member2, &group_id);
+
+        assert_eq!(
+            client.get_reputation(&admin).on_time_contributions,
+            round
+        );
+        assert_eq!(
+            client.get_reputation(&member1).on_time_contributions,
+            round
+        );
+        assert_eq!(
+            client.get_reputation(&member2).on_time_contributions,
+            round
+        );
+
+        client.distribute_payout(&group_id);
+    }
+
+    let completed_reputation = MemberReputation {
+        groups_completed: 1,
+        on_time_contributions: 3,
+        defaults: 0,
+    };
+
+    assert_eq!(client.get_reputation(&admin), completed_reputation.clone());
+    assert_eq!(client.get_reputation(&member1), completed_reputation.clone());
+    assert_eq!(client.get_reputation(&member2), completed_reputation);
 }

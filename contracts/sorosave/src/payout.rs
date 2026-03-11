@@ -39,6 +39,9 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
     if group.current_round >= group.total_rounds {
         group.status = GroupStatus::Completed;
         storage::set_group(env, &group);
+        for member in group.members.iter() {
+            storage::increment_groups_completed(env, &member);
+        }
 
         env.events()
             .publish((crate::symbol_short!("grp_comp"),), group_id);

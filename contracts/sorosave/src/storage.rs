@@ -1,6 +1,6 @@
 use soroban_sdk::{Address, Env, Vec};
 
-use crate::types::{DataKey, Dispute, RoundInfo, SavingsGroup};
+use crate::types::{DataKey, Dispute, GroupTemplate, RoundInfo, SavingsGroup};
 
 const INSTANCE_TTL_THRESHOLD: u32 = 100;
 const INSTANCE_TTL_EXTEND: u32 = 500;
@@ -134,4 +134,31 @@ fn extend_persistent_ttl(env: &Env, key: &DataKey) {
     env.storage()
         .persistent()
         .extend_ttl(key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+}
+
+// --- Group Templates ---
+
+pub fn get_template_counter(env: &Env, admin: &Address) -> u32 {
+    let key = DataKey::TemplateCounter(admin.clone());
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(0)
+}
+
+pub fn set_template_counter(env: &Env, admin: &Address, count: u32) {
+    let key = DataKey::TemplateCounter(admin.clone());
+    env.storage().persistent().set(&key, &count);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn get_template(env: &Env, admin: &Address, index: u32) -> Option<GroupTemplate> {
+    let key = DataKey::GroupTemplate(admin.clone(), index);
+    env.storage().persistent().get(&key)
+}
+
+pub fn set_template(env: &Env, admin: &Address, index: u32, template: &GroupTemplate) {
+    let key = DataKey::GroupTemplate(admin.clone(), index);
+    env.storage().persistent().set(&key, template);
+    extend_persistent_ttl(env, &key);
 }

@@ -8,6 +8,7 @@ mod errors;
 mod group;
 mod payout;
 mod storage;
+mod template;
 mod types;
 
 pub use errors::ContractError;
@@ -162,6 +163,41 @@ impl SoroSaveContract {
         new_admin: Address,
     ) -> Result<(), ContractError> {
         admin::set_group_admin(&env, current_admin, group_id, new_admin)
+    }
+
+    // ─── Group Templates ─────────────────────────────────────────────
+
+    /// Save a group configuration as a template for quick creation.
+    pub fn save_template(
+        env: Env,
+        admin: Address,
+        name: String,
+        token: Address,
+        contribution_amount: i128,
+        cycle_length: u64,
+        max_members: u32,
+    ) -> Result<u32, ContractError> {
+        template::save_template(&env, admin, name, token, contribution_amount, cycle_length, max_members)
+    }
+
+    /// Get a saved template by index.
+    pub fn get_template(env: Env, admin: Address, index: u32) -> Result<GroupTemplate, ContractError> {
+        template::get_template(&env, admin, index)
+    }
+
+    /// Get all templates for an admin.
+    pub fn get_admin_templates(env: Env, admin: Address) -> Vec<GroupTemplate> {
+        template::get_admin_templates(&env, admin)
+    }
+
+    /// Create a new group from a saved template.
+    pub fn create_from_template(
+        env: Env,
+        admin: Address,
+        template_index: u32,
+        name: Option<String>,
+    ) -> Result<u64, ContractError> {
+        template::create_from_template(&env, admin, template_index, name)
     }
 }
 

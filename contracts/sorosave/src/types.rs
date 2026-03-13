@@ -61,4 +61,17 @@ pub enum DataKey {
     Round(u64, u32),
     MemberGroups(Address),
     Dispute(u64),
+    GroupTemplate(Address, u32), // (admin, template_index)
+    TemplateCounter(Address),    // admin -> count of templates
+}
+
+/// Group template for quick group creation presets.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct GroupTemplate {
+    pub name: String,
+    pub token: Address,
+    pub contribution_amount: i128,
+    pub cycle_length: u64,
+    pub max_members: u32,
 }

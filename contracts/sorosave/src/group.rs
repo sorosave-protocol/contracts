@@ -53,24 +53,53 @@ pub fn create_group(
     Ok(group_id)
 }
 
-pub fn join_group(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
+pub fn join_group(
+    env: &Env, 
+    member: Address, 
+    group_id: u64, 
+    referred_by: Option<Address>
+) -> Result<(), ContractError> {
     member.require_auth();
 
-    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    let mut group = storage::get_group(env, group_id)?;
 
     if group.status != GroupStatus::Forming {
-        return Err(ContractError::GroupNotForming);
+        return Err(ContractError::GroupNotOpen);
     }
 
     if group.members.len() >= group.max_members {
         return Err(ContractError::GroupFull);
     }
 
-    // Check if already a member
-    for m in group.members.iter() {
-        if m == member {
+    for i in 0..group.members.len() {
+        if group.members.get(i).unwrap() == member {
             return Err(ContractError::AlreadyMember);
         }
+    }
+
+    // Handle referral if provided
+    if let Some(referrer) = &referred_by {
+        // Verify referrer is a member of the group
+        let mut referrer_is_member = false;
+        for i in 0..group.members.len() {
+            if group.members.get(i).unwrap() == *referrer {
+                referrer_is_member = true;
+                break;
+            }
+        }
+
+        if !referrer_is_member {
+            return Err(ContractError::InvalidReferrer);
+        }
+
+        // Track the referral
+        storage::add_referral(env, referrer, &member, group_id);
+
+        // Emit referral event
+        env.events().publish(
+            (crate::symbol_short!("referral"),), 
+            (referrer.clone(), member.clone(), group_id)
+        );
     }
 
     group.members.push_back(member.clone());
@@ -78,96 +107,43 @@ pub fn join_group(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     storage::add_member_group(env, &member, group_id);
 
     env.events()
-        .publish((crate::symbol_short!("grp_join"),), (group_id, member));
+        .publish((crate::symbol_short!("mem_join"),), (member, group_id));
 
     Ok(())
 }
 
-pub fn leave_group(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
-    member.require_auth();
-
-    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
-
-    if group.status != GroupStatus::Forming {
-        return Err(ContractError::GroupNotForming);
-    }
-
-    // Admin cannot leave their own group
-    if member == group.admin {
-        return Err(ContractError::Unauthorized);
-    }
-
-    let mut found = false;
-    let mut new_members = Vec::new(env);
-    for m in group.members.iter() {
-        if m == member {
-            found = true;
-        } else {
-            new_members.push_back(m);
-        }
-    }
-
-    if !found {
-        return Err(ContractError::NotMember);
-    }
-
-    group.members = new_members;
-    storage::set_group(env, &group);
-    storage::remove_member_group(env, &member, group_id);
-
-    env.events()
-        .publish((crate::symbol_short!("grp_leav"),), (group_id, member));
-
-    Ok(())
+pub fn get_referral_count(env: &Env, referrer: Address, group_id: u64) -> u32 {
+    storage::get_referral_count(env, &referrer, group_id)
 }
 
 pub fn start_group(env: &Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
     admin.require_auth();
 
-    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    let mut group = storage::get_group(env, group_id)?;
 
-    if admin != group.admin {
+    if group.admin != admin {
         return Err(ContractError::Unauthorized);
     }
 
     if group.status != GroupStatus::Forming {
-        return Err(ContractError::GroupNotForming);
+        return Err(ContractError::InvalidGroupStatus);
     }
 
     if group.members.len() < 2 {
         return Err(ContractError::InsufficientMembers);
     }
 
-    // Set payout order to member join order (can be randomized later)
-    group.payout_order = group.members.clone();
-    group.total_rounds = group.members.len();
-    group.current_round = 1;
     group.status = GroupStatus::Active;
+    group.total_rounds = group.members.len() as u32;
+    group.current_round = 1;
 
-    // Initialize first round
-    let first_recipient = group.payout_order.get(0).unwrap();
-    let round_info = RoundInfo {
-        round_number: 1,
-        recipient: first_recipient,
-        contributions: Map::new(env),
-        total_contributed: 0,
-        is_complete: false,
-        deadline: env.ledger().timestamp() + group.cycle_length,
-    };
+    // Initialize payout order (can be randomized or based on join order)
+    group.payout_order = group.members.clone();
 
-    storage::set_round(env, group_id, &round_info);
     storage::set_group(env, &group);
 
     env.events()
-        .publish((crate::symbol_short!("grp_strt"),), group_id);
+        .publish((crate::symbol_short!("grp_start"),), group_id);
 
     Ok(())
-}
-
-pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError> {
-    storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)
-}
-
-pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
-    storage::get_member_groups(env, &member)
 }

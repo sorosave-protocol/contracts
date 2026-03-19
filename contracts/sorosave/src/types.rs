@@ -1,64 +1,114 @@
-use soroban_sdk::{contracttype, Address, Map, String, Vec};
+use soroban_sdk::{contracttype, Address, Map};
 
-/// Status of a savings group throughout its lifecycle.
+#[derive(Clone)]
 #[contracttype]
-#[derive(Clone, Debug, PartialEq)]
-pub enum GroupStatus {
-    Forming,   // Accepting members, not yet started
-    Active,    // Rounds in progress
-    Completed, // All rounds finished, all payouts distributed
-    Disputed,  // A dispute has been raised, group is frozen
-    Paused,    // Admin has paused the group
+pub struct User {
+    pub address: Address,
+    pub name: String,
+    pub email: String,
+    pub phone: String,
+    pub created_at: u64,
+    pub is_active: bool,
 }
 
-/// Core savings group configuration and state.
+#[derive(Clone)]
 #[contracttype]
-#[derive(Clone, Debug)]
 pub struct SavingsGroup {
     pub id: u64,
     pub name: String,
-    pub admin: Address,
-    pub token: Address,
+    pub description: String,
+    pub target_amount: i128,
+    pub current_amount: i128,
     pub contribution_amount: i128,
-    pub cycle_length: u64,
-    pub max_members: u32,
+    pub frequency: u64,
+    pub start_date: u64,
+    pub end_date: u64,
+    pub is_active: bool,
+    pub creator: Address,
+    pub admins: Vec<Address>,
+    pub admin_threshold: u32,
     pub members: Vec<Address>,
-    pub payout_order: Vec<Address>,
-    pub current_round: u32,
-    pub total_rounds: u32,
-    pub status: GroupStatus,
     pub created_at: u64,
 }
 
-/// Tracks contributions and payout status for a single round.
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct RoundInfo {
-    pub round_number: u32,
-    pub recipient: Address,
-    pub contributions: Map<Address, bool>,
-    pub total_contributed: i128,
-    pub is_complete: bool,
-    pub deadline: u64,
-}
-
-/// Dispute information for a group.
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct Dispute {
-    pub raised_by: Address,
-    pub reason: String,
-    pub raised_at: u64,
-}
-
-/// Storage keys for all contract data.
-#[contracttype]
 #[derive(Clone)]
-pub enum DataKey {
-    Admin,
-    GroupCounter,
-    Group(u64),
-    Round(u64, u32),
-    MemberGroups(Address),
-    Dispute(u64),
+#[contracttype]
+pub struct AdminProposal {
+    pub id: u64,
+    pub group_id: u64,
+    pub proposal_type: AdminProposalType,
+    pub proposer: Address,
+    pub target: Option<Address>,
+    pub value: Option<i128>,
+    pub description: String,
+    pub approvals: Vec<Address>,
+    pub executed: bool,
+    pub created_at: u64,
+    pub expires_at: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub enum AdminProposalType {
+    AddAdmin,
+    RemoveAdmin,
+    UpdateThreshold,
+    UpdateGroupSettings,
+    WithdrawFunds,
+    PauseGroup,
+    UnpauseGroup,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct Contribution {
+    pub id: u64,
+    pub group_id: u64,
+    pub user: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+    pub is_penalty: bool,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct Withdrawal {
+    pub id: u64,
+    pub group_id: u64,
+    pub user: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+    pub reason: String,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct GroupMembership {
+    pub group_id: u64,
+    pub user: Address,
+    pub joined_at: u64,
+    pub is_active: bool,
+    pub total_contributed: i128,
+    pub missed_contributions: u32,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub enum SavingsError {
+    UserNotFound = 1,
+    GroupNotFound = 2,
+    InsufficientFunds = 3,
+    UnauthorizedAccess = 4,
+    GroupInactive = 5,
+    AlreadyMember = 6,
+    NotMember = 7,
+    InvalidAmount = 8,
+    GroupFull = 9,
+    ContributionPeriodEnded = 10,
+    InsufficientApprovals = 11,
+    ProposalNotFound = 12,
+    ProposalExpired = 13,
+    ProposalAlreadyExecuted = 14,
+    NotAdmin = 15,
+    InvalidThreshold = 16,
 }

@@ -222,3 +222,23 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+fn test_new_group_admin_can_pause_and_resume_group() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.join_group(&new_admin, &group_id);
+
+    client.set_group_admin(&admin, &group_id, &new_admin);
+    client.start_group(&new_admin, &group_id);
+
+    client.pause_group(&new_admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Paused);
+
+    client.resume_group(&new_admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+}

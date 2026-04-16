@@ -74,6 +74,11 @@ impl SoroSaveContract {
         group::get_member_groups(&env, member)
     }
 
+    /// Expose the total number of groups ever created.
+    pub fn get_total_groups(env: Env) -> u64 {
+        storage::get_group_counter(&env)
+    }
+
     // ─── Contributions ──────────────────────────────────────────────
 
     /// Contribute to the current round of a group.

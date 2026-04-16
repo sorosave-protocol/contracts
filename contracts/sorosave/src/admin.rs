@@ -127,16 +127,75 @@ pub fn emergency_withdraw(env: &Env, admin: Address, group_id: u64) -> Result<()
         return Err(ContractError::GroupCompleted);
     }
 
-    // Calculate remaining balance and distribute equally
     let token_client = soroban_sdk::token::Client::new(env, &group.token);
     let contract_addr = env.current_contract_address();
     let balance = token_client.balance(&contract_addr);
 
+    // Distribute remaining balance proportionally to actual historical contributions.
+    // Each recorded contribution is worth `group.contribution_amount`.
     if balance > 0 {
-        let per_member = balance / group.members.len() as i128;
-        if per_member > 0 {
+        let mut contribution_counts = soroban_sdk::Map::new(env);
+        let mut total_contributions: u32 = 0;
+
+        // Existing rounds are indexed from 1..=current_round.
+        for round_no in 1..=group.current_round {
+            if let Some(round) = storage::get_round(env, group_id, round_no) {
+                for member in group.members.iter() {
+                    if round.contributions.contains_key(member.clone()) {
+                        let prev = contribution_counts.get(member.clone()).unwrap_or(0u32);
+                        contribution_counts.set(member.clone(), prev + 1);
+                        total_contributions += 1;
+                    }
+                }
+            }
+        }
+
+        if total_contributions == 0 {
+            // No contributions recorded yet: fallback to equal split.
+            let per_member = balance / group.members.len() as i128;
+            let mut distributed: i128 = 0;
+            if per_member > 0 {
+                for member in group.members.iter() {
+                    token_client.transfer(&contract_addr, &member, &per_member);
+                    distributed += per_member;
+                }
+            }
+
+            // Flush remainder to group admin to ensure no tokens get stuck.
+            let remainder = balance - distributed;
+            if remainder > 0 {
+                token_client.transfer(&contract_addr, &group.admin, &remainder);
+            }
+        } else {
+            let mut distributed: i128 = 0;
+
             for member in group.members.iter() {
-                token_client.transfer(&contract_addr, &member, &per_member);
+                let count = contribution_counts.get(member.clone()).unwrap_or(0u32) as i128;
+                if count == 0 {
+                    continue;
+                }
+
+                let share = (balance * count) / (total_contributions as i128);
+                if share > 0 {
+                    token_client.transfer(&contract_addr, &member, &share);
+                    distributed += share;
+                }
+            }
+
+            // Flush rounding remainder to the highest-contributor address (or admin fallback).
+            let mut top_member = group.admin.clone();
+            let mut top_count = 0u32;
+            for member in group.members.iter() {
+                let c = contribution_counts.get(member.clone()).unwrap_or(0u32);
+                if c > top_count {
+                    top_count = c;
+                    top_member = member;
+                }
+            }
+
+            let remainder = balance - distributed;
+            if remainder > 0 {
+                token_client.transfer(&contract_addr, &top_member, &remainder);
             }
         }
     }

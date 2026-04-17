@@ -59,6 +59,11 @@ impl SoroSaveContract {
         group::leave_group(&env, member, group_id)
     }
 
+    /// Delete a group (only allowed in Forming state with only admin remaining).
+    pub fn delete_group(env: Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
+        group::delete_group(&env, admin, group_id)
+    }
+
     /// Start the group rounds. Only the group admin can call this.
     pub fn start_group(env: Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
         group::start_group(&env, admin, group_id)

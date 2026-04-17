@@ -222,3 +222,65 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+fn test_delete_empty_group() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    // Add a member
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    
+    // Member leaves
+    client.leave_group(&member1, &group_id);
+    
+    // Now only admin remains, should be able to delete
+    client.delete_group(&admin, &group_id);
+    
+    // Verify group is deleted
+    assert!(client.try_get_group(&group_id).is_err());
+    
+    // Verify admin's member_groups is cleaned up
+    let member_groups = client.get_member_groups(&admin);
+    assert_eq!(member_groups.len(), 0);
+}
+
+#[test]
+#[should_panic(expected = "InsufficientMembers")]
+fn test_delete_group_with_multiple_members() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    // Add a member
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    
+    // Try to delete with 2 members (should fail)
+    client.delete_group(&admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_delete_group_non_admin() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    // Non-admin tries to delete
+    let non_admin = Address::generate(&env);
+    client.delete_group(&non_admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "GroupNotForming")]
+fn test_delete_active_group() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+    
+    // Try to delete active group (should fail)
+    client.delete_group(&admin, &group_id);
+}

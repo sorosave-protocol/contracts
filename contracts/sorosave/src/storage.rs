@@ -55,6 +55,11 @@ pub fn set_group(env: &Env, group: &SavingsGroup) {
     extend_persistent_ttl(env, &key);
 }
 
+pub fn remove_group(env: &Env, group_id: u64) {
+    let key = DataKey::Group(group_id);
+    env.storage().persistent().remove(&key);
+}
+
 // --- Round ---
 
 pub fn get_round(env: &Env, group_id: u64, round: u32) -> Option<RoundInfo> {

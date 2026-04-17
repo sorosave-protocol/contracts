@@ -171,3 +171,31 @@ pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError
 pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
     storage::get_member_groups(env, &member)
 }
+
+pub fn delete_group(env: &Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if admin != group.admin {
+        return Err(ContractError::Unauthorized);
+    }
+
+    if group.status != GroupStatus::Forming {
+        return Err(ContractError::GroupNotForming);
+    }
+
+    // Only allow deletion if only admin remains
+    if group.members.len() != 1 {
+        return Err(ContractError::InsufficientMembers);
+    }
+
+    // Clean up storage
+    storage::remove_group(env, group_id);
+    storage::remove_member_group(env, &admin, group_id);
+
+    env.events()
+        .publish((crate::symbol_short!("grp_del"),), group_id);
+
+    Ok(())
+}

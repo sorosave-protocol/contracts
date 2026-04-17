@@ -4,6 +4,9 @@ use crate::errors::ContractError;
 use crate::storage;
 use crate::types::{GroupStatus, RoundInfo, SavingsGroup};
 
+// Maximum total duration for a group (365 days in seconds)
+const MAX_GROUP_DURATION: u64 = 365 * 24 * 60 * 60;
+
 pub fn create_group(
     env: &Env,
     admin: Address,
@@ -136,6 +139,12 @@ pub fn start_group(env: &Env, admin: Address, group_id: u64) -> Result<(), Contr
 
     if group.members.len() < 2 {
         return Err(ContractError::InsufficientMembers);
+    }
+
+    // Validate total duration doesn't exceed maximum
+    let total_duration = (group.members.len() as u64) * group.cycle_length;
+    if total_duration > MAX_GROUP_DURATION {
+        return Err(ContractError::DurationTooLong);
     }
 
     // Set payout order to member join order (can be randomized later)

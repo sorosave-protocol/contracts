@@ -222,3 +222,58 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+#[should_panic(expected = "DurationTooLong")]
+fn test_max_group_duration() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Create a group with very long cycle_length
+    // 365 days = 31,536,000 seconds
+    // With 10 members, total duration = 315,360,000 seconds (> 365 days)
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Long Duration Group"),
+        &token,
+        &1_000_000,
+        &40_000_000, // ~463 days per cycle
+        &10,
+    );
+    
+    // Add 9 more members to reach 10 total
+    for _ in 0..9 {
+        let member = Address::generate(&env);
+        client.join_group(&member, &group_id);
+    }
+    
+    // This should fail with DurationTooLong
+    client.start_group(&admin, &group_id);
+}
+
+#[test]
+fn test_valid_group_duration() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Create a group with reasonable duration
+    // 30 days per cycle, 10 members = 300 days total (< 365 days)
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Valid Duration Group"),
+        &token,
+        &1_000_000,
+        &2_592_000, // 30 days
+        &10,
+    );
+    
+    // Add 9 more members
+    for _ in 0..9 {
+        let member = Address::generate(&env);
+        client.join_group(&member, &group_id);
+    }
+    
+    // This should succeed
+    client.start_group(&admin, &group_id);
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Active);
+}

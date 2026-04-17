@@ -222,3 +222,37 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+fn test_get_total_groups() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Initially should be 0
+    assert_eq!(client.get_total_groups(), 0);
+    
+    // Create first group
+    create_test_group(&env, &client, &admin, &token);
+    assert_eq!(client.get_total_groups(), 1);
+    
+    // Create second group
+    client.create_group(
+        &admin,
+        &String::from_str(&env, "Second Group"),
+        &token,
+        &500_000,
+        &43200,
+        &3,
+    );
+    assert_eq!(client.get_total_groups(), 2);
+    
+    // Create third group
+    client.create_group(
+        &admin,
+        &String::from_str(&env, "Third Group"),
+        &token,
+        &750_000,
+        &86400,
+        &4,
+    );
+    assert_eq!(client.get_total_groups(), 3);
+}

@@ -222,3 +222,40 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+#[should_panic(expected = "InvalidToken")]
+fn test_invalid_token_contract() {
+    let (env, admin, client, _token) = setup_env();
+    
+    // Use a random address that is not a token contract
+    let invalid_token = Address::generate(&env);
+    
+    // This should fail with InvalidToken
+    client.create_group(
+        &admin,
+        &String::from_str(&env, "Test Group"),
+        &invalid_token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+}
+
+#[test]
+fn test_valid_token_contract() {
+    let (env, admin, client, token) = setup_env();
+    
+    // This should succeed with a valid token
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Test Group"),
+        &token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.token, token);
+}

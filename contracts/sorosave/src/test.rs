@@ -222,3 +222,27 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+#[should_panic(expected = "InvalidToken")]
+fn test_create_group_invalid_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let contract_id = env.register(SoroSaveContract, (&admin,));
+    let client = SoroSaveContractClient::new(&env, &contract_id);
+
+    // Use a random address that is not a token contract
+    let invalid_token = Address::generate(&env);
+
+    // This should fail with InvalidToken error
+    client.create_group(
+        &admin,
+        &String::from_str(&env, "Test Group"),
+        &invalid_token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+}

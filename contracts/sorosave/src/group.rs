@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env, Map, String, Vec};
+use soroban_sdk::{token, Address, Env, Map, String, Vec};
 
 use crate::errors::ContractError;
 use crate::storage;
@@ -21,6 +21,12 @@ pub fn create_group(
     if max_members < 2 {
         return Err(ContractError::InsufficientMembers);
     }
+
+    // Validate token contract exists by calling symbol()
+    let token_client = token::Client::new(env, &token);
+    token_client
+        .try_symbol()
+        .map_err(|_| ContractError::InvalidToken)?;
 
     let group_id = storage::get_group_counter(env) + 1;
     storage::set_group_counter(env, group_id);

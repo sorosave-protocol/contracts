@@ -222,3 +222,109 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_unauthorized_pause_group() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+    
+    // Non-admin tries to pause
+    let non_admin = Address::generate(&env);
+    client.pause_group(&non_admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_unauthorized_resume_group() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+    client.pause_group(&admin, &group_id);
+    
+    // Non-admin tries to resume
+    let non_admin = Address::generate(&env);
+    client.resume_group(&non_admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_unauthorized_resolve_dispute() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+    
+    // Raise a dispute
+    client.raise_dispute(&member1, &group_id, &String::from_str(&env, "Test dispute"));
+    
+    // Non-admin tries to resolve
+    let non_admin = Address::generate(&env);
+    client.resolve_dispute(&non_admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_unauthorized_emergency_withdraw() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+    
+    // Non-admin tries emergency withdraw
+    let non_admin = Address::generate(&env);
+    client.emergency_withdraw(&non_admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "NotMember")]
+fn test_unauthorized_contribute() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+    
+    // Non-member tries to contribute
+    let non_member = Address::generate(&env);
+    client.contribute(&non_member, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_unauthorized_start_group() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    
+    // Non-admin tries to start group
+    let non_admin = Address::generate(&env);
+    client.start_group(&non_admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_unauthorized_set_group_admin() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let new_admin = Address::generate(&env);
+    
+    // Non-admin tries to transfer admin
+    let non_admin = Address::generate(&env);
+    client.set_group_admin(&non_admin, &group_id, &new_admin);
+}

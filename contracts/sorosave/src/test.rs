@@ -222,3 +222,71 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+fn test_valid_group_duration() {
+    let (env, admin, client, token) = setup_env();
+    
+    // 5 members * 30 days = 150 days (valid)
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Valid Duration Group"),
+        &token,
+        &1_000_000,
+        &(30 * 24 * 60 * 60), // 30 days
+        &5,
+    );
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.max_members, 5);
+}
+
+#[test]
+#[should_panic(expected = "DurationTooLong")]
+fn test_duration_exceeds_limit() {
+    let (env, admin, client, token) = setup_env();
+    
+    // 100 members * 10 days = 1000 days (exceeds 365 day limit)
+    client.create_group(
+        &admin,
+        &String::from_str(&env, "Too Long Group"),
+        &token,
+        &1_000_000,
+        &(10 * 24 * 60 * 60), // 10 days
+        &100, // 100 members
+    );
+}
+
+#[test]
+#[should_panic(expected = "DurationTooLong")]
+fn test_duration_at_boundary() {
+    let (env, admin, client, token) = setup_env();
+    
+    // 366 members * 1 day = 366 days (just over limit)
+    client.create_group(
+        &admin,
+        &String::from_str(&env, "Boundary Group"),
+        &token,
+        &1_000_000,
+        &(24 * 60 * 60), // 1 day
+        &366,
+    );
+}
+
+#[test]
+fn test_duration_exactly_at_limit() {
+    let (env, admin, client, token) = setup_env();
+    
+    // 365 members * 1 day = 365 days (exactly at limit, should pass)
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Max Duration Group"),
+        &token,
+        &1_000_000,
+        &(24 * 60 * 60), // 1 day
+        &365,
+    );
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.max_members, 365);
+}

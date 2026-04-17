@@ -222,3 +222,86 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+#[should_panic(expected = "GroupFull")]
+fn test_group_full_scenario() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Create group with max_members=2
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Small Group"),
+        &token,
+        &1_000_000,
+        &86400,
+        &2, // max 2 members
+    );
+    
+    // Admin is already member 1
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 1);
+    
+    // Add member 2 (should succeed)
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 2);
+    
+    // Try to add member 3 (should fail with GroupFull)
+    let member2 = Address::generate(&env);
+    client.join_group(&member2, &group_id);
+}
+
+#[test]
+fn test_group_full_at_capacity() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Create group with max_members=3
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Three Member Group"),
+        &token,
+        &1_000_000,
+        &86400,
+        &3,
+    );
+    
+    // Add 2 more members (total 3)
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 3);
+    assert_eq!(group.max_members, 3);
+}
+
+#[test]
+fn test_group_not_full() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Create group with max_members=5
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Large Group"),
+        &token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    
+    // Add 2 members (total 3, still room for 2 more)
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 3);
+    assert!(group.members.len() < group.max_members);
+}

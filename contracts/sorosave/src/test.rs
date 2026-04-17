@@ -222,3 +222,121 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_admin_cannot_leave_own_group() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    // Admin tries to leave their own group (should fail)
+    client.leave_group(&admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "GroupNotForming")]
+fn test_leave_during_active_state_fails() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    
+    // Start the group (moves to Active state)
+    client.start_group(&admin, &group_id);
+    
+    // Try to leave during Active state (should fail)
+    client.leave_group(&member1, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "NotMember")]
+fn test_non_member_leaving_fails() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    // Non-member tries to leave (should fail)
+    let non_member = Address::generate(&env);
+    client.leave_group(&non_member, &group_id);
+}
+
+#[test]
+fn test_leave_updates_member_groups_index() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    
+    // Verify member1 is in the group
+    let member_groups = client.get_member_groups(&member1);
+    assert_eq!(member_groups.len(), 1);
+    assert_eq!(member_groups.get(0).unwrap(), group_id);
+    
+    // Member leaves
+    client.leave_group(&member1, &group_id);
+    
+    // Verify member1 is no longer in any groups
+    let member_groups = client.get_member_groups(&member1);
+    assert_eq!(member_groups.len(), 0);
+}
+
+#[test]
+fn test_leave_removes_from_members_list() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    
+    // Verify 3 members (admin + 2)
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 3);
+    
+    // Member1 leaves
+    client.leave_group(&member1, &group_id);
+    
+    // Verify 2 members remain (admin + member2)
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 2);
+    
+    // Verify member1 is not in the list
+    let mut found_member1 = false;
+    for m in group.members.iter() {
+        if m == member1 {
+            found_member1 = true;
+        }
+    }
+    assert!(!found_member1);
+}
+
+#[test]
+fn test_multiple_members_leave() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+    
+    // Verify 4 members
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 4);
+    
+    // All non-admin members leave
+    client.leave_group(&member1, &group_id);
+    client.leave_group(&member2, &group_id);
+    client.leave_group(&member3, &group_id);
+    
+    // Verify only admin remains
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 1);
+    assert_eq!(group.members.get(0).unwrap(), admin);
+}

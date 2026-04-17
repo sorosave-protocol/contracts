@@ -8,6 +8,7 @@ pub fn create_group(
     env: &Env,
     admin: Address,
     name: String,
+    description: String,
     token: Address,
     contribution_amount: i128,
     cycle_length: u64,
@@ -21,6 +22,9 @@ pub fn create_group(
     if max_members < 2 {
         return Err(ContractError::InsufficientMembers);
     }
+    if description.len() > 256 {
+        return Err(ContractError::InvalidAmount); // Reuse InvalidAmount for now
+    }
 
     let group_id = storage::get_group_counter(env) + 1;
     storage::set_group_counter(env, group_id);
@@ -31,6 +35,7 @@ pub fn create_group(
     let group = SavingsGroup {
         id: group_id,
         name,
+        description,
         admin: admin.clone(),
         token,
         contribution_amount,

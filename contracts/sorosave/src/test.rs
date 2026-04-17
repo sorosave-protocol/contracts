@@ -31,6 +31,7 @@ fn create_test_group(
     client.create_group(
         admin,
         &String::from_str(env, "Test Savings Group"),
+        &String::from_str(env, "A test savings group"),
         token,
         &1_000_000, // 1 token (7 decimals)
         &86400,     // 1 day cycle
@@ -119,6 +120,7 @@ fn test_full_cycle() {
     let group_id = client.create_group(
         &admin,
         &String::from_str(&env, "Full Cycle Test"),
+        &String::from_str(&env, "Test description"),
         &token_id.address(),
         &1_000_000,
         &86400,
@@ -159,6 +161,7 @@ fn test_member_groups() {
     let group2 = client.create_group(
         &admin,
         &String::from_str(&env, "Second Group"),
+        &String::from_str(&env, "Test description"),
         &token,
         &500_000,
         &43200,
@@ -203,6 +206,7 @@ fn test_dispute_flow() {
         &member1,
         &group_id,
         &String::from_str(&env, "Suspicious activity"),
+        &String::from_str(&env, "Test description"),
     );
     assert_eq!(client.get_group(&group_id).status, GroupStatus::Disputed);
 
@@ -221,4 +225,41 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_group_description() {
+    let (env, admin, client, token) = setup_env();
+    
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Test Group"),
+        &String::from_str(&env, "This is a detailed description of the savings group"),
+        &token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.description, String::from_str(&env, "This is a detailed description of the savings group"));
+}
+
+#[test]
+#[should_panic(expected = "InvalidAmount")]
+fn test_description_too_long() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Create a description longer than 256 characters
+    let long_desc = "a".repeat(257);
+    
+    client.create_group(
+        &admin,
+        &String::from_str(&env, "Test Group"),
+        &String::from_str(&env, &long_desc),
+        &token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
 }

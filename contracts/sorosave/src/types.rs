@@ -17,6 +17,7 @@ pub enum GroupStatus {
 pub struct SavingsGroup {
     pub id: u64,
     pub name: String,
+    pub description: String,
     pub admin: Address,
     pub token: Address,
     pub contribution_amount: i128,

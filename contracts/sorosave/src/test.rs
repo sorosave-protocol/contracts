@@ -222,3 +222,76 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_unauthorized_pause_group() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    client.start_group(&admin, &group_id);
+    
+    // Non-admin tries to pause
+    let non_admin = Address::generate(&env);
+    client.pause_group(&non_admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_unauthorized_resolve_dispute() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+    
+    // Raise a dispute first
+    client.raise_dispute(&member1, &group_id, &String::from_str(&env, "Test dispute"));
+    
+    // Non-admin tries to resolve
+    let non_admin = Address::generate(&env);
+    client.resolve_dispute(&non_admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized")]
+fn test_unauthorized_emergency_withdraw() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    client.start_group(&admin, &group_id);
+    
+    // Non-admin tries emergency withdraw
+    let non_admin = Address::generate(&env);
+    client.emergency_withdraw(&non_admin, &group_id);
+}
+
+#[test]
+#[should_panic(expected = "NotMember")]
+fn test_unauthorized_contribute() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Setup token we can mint from
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin.clone());
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    
+    token_sac.mint(&admin, &10_000_000);
+    
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Test Group"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+    
+    // Non-member tries to contribute
+    let non_member = Address::generate(&env);
+    token_sac.mint(&non_member, &10_000_000);
+    client.contribute(&non_member, &group_id);
+}

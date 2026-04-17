@@ -22,6 +22,12 @@ pub fn create_group(
         return Err(ContractError::InsufficientMembers);
     }
 
+    // Validate token contract exists by calling symbol()
+    let token_client = soroban_sdk::token::Client::new(env, &token);
+    if token_client.try_symbol().is_err() {
+        return Err(ContractError::InvalidToken);
+    }
+
     let group_id = storage::get_group_counter(env) + 1;
     storage::set_group_counter(env, group_id);
 

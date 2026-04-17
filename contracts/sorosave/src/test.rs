@@ -222,3 +222,59 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+fn test_valid_token_contract() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Create group with valid token (should succeed)
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Valid Token Group"),
+        &token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.token, token);
+}
+
+#[test]
+#[should_panic(expected = "InvalidToken")]
+fn test_invalid_token_contract() {
+    let (env, admin, client, _token) = setup_env();
+    
+    // Use a random address that's not a token contract
+    let invalid_token = Address::generate(&env);
+    
+    // Try to create group with invalid token (should fail)
+    client.create_group(
+        &admin,
+        &String::from_str(&env, "Invalid Token Group"),
+        &invalid_token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+}
+
+#[test]
+#[should_panic(expected = "InvalidToken")]
+fn test_non_existent_token_contract() {
+    let (env, admin, client, _token) = setup_env();
+    
+    // Use the contract's own address (not a token)
+    let non_token = client.address.clone();
+    
+    // Try to create group with non-token contract (should fail)
+    client.create_group(
+        &admin,
+        &String::from_str(&env, "Non-Token Group"),
+        &non_token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+}

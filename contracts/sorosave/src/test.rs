@@ -222,3 +222,39 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+#[should_panic(expected = "AlreadyContributed")]
+fn test_double_contribution_prevention() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Setup token we can mint from
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin.clone());
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    
+    let member1 = Address::generate(&env);
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+    
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Test Group"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+    
+    // First contribution should succeed
+    client.contribute(&admin, &group_id);
+    
+    // Verify contribution was recorded
+    let round = client.get_round_status(&group_id, &1);
+    assert!(round.contributions.contains_key(admin.clone()));
+    
+    // Second contribution in same round should fail with AlreadyContributed
+    client.contribute(&admin, &group_id);
+}

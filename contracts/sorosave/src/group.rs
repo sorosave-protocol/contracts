@@ -171,3 +171,33 @@ pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError
 pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
     storage::get_member_groups(env, &member)
 }
+
+pub fn get_groups_by_status(
+    env: &Env,
+    status: GroupStatus,
+    offset: u64,
+    limit: u32,
+) -> Vec<u64> {
+    let total_groups = storage::get_group_counter(env);
+    let mut result = Vec::new(env);
+    let mut count = 0u32;
+    let mut skipped = 0u64;
+
+    for group_id in 1..=total_groups {
+        if let Some(group) = storage::get_group(env, group_id) {
+            if group.status == status {
+                if skipped < offset {
+                    skipped += 1;
+                    continue;
+                }
+                result.push_back(group_id);
+                count += 1;
+                if count >= limit {
+                    break;
+                }
+            }
+        }
+    }
+
+    result
+}

@@ -222,3 +222,36 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+fn test_get_groups_by_status() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Create multiple groups with different statuses
+    let group1 = create_test_group(&env, &client, &admin, &token);
+    let group2 = client.create_group(
+        &admin,
+        &String::from_str(&env, "Second Group"),
+        &token,
+        &500_000,
+        &43200,
+        &3,
+    );
+    
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group1);
+    client.start_group(&admin, &group1);
+    
+    // group1 is Active, group2 is Forming
+    let forming_groups = client.get_groups_by_status(&GroupStatus::Forming, &0, &10);
+    assert_eq!(forming_groups.len(), 1);
+    assert_eq!(forming_groups.get(0).unwrap(), group2);
+    
+    let active_groups = client.get_groups_by_status(&GroupStatus::Active, &0, &10);
+    assert_eq!(active_groups.len(), 1);
+    assert_eq!(active_groups.get(0).unwrap(), group1);
+    
+    // Test pagination
+    let all_forming = client.get_groups_by_status(&GroupStatus::Forming, &0, &1);
+    assert_eq!(all_forming.len(), 1);
+}

@@ -74,6 +74,16 @@ impl SoroSaveContract {
         group::get_member_groups(&env, member)
     }
 
+    /// Get group IDs filtered by status with pagination.
+    pub fn get_groups_by_status(
+        env: Env,
+        status: GroupStatus,
+        offset: u64,
+        limit: u32,
+    ) -> Vec<u64> {
+        group::get_groups_by_status(&env, status, offset, limit)
+    }
+
     // ─── Contributions ──────────────────────────────────────────────
 
     /// Contribute to the current round of a group.

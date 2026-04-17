@@ -222,3 +222,34 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+#[should_panic(expected = "GroupFull")]
+fn test_group_full_scenario() {
+    let (env, admin, client, token) = setup_env();
+    
+    // Create a group with max_members=2
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Small Group"),
+        &token,
+        &1_000_000,
+        &86400,
+        &2, // max 2 members
+    );
+    
+    // Admin is already the first member
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 1);
+    
+    // Add second member (should succeed)
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 2);
+    
+    // Attempt to add third member (should fail with GroupFull)
+    let member2 = Address::generate(&env);
+    client.join_group(&member2, &group_id);
+}

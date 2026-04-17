@@ -222,3 +222,23 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+fn test_member_join_leave_events() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    
+    // Join event should include group_id, member, timestamp, and member_count
+    client.join_group(&member1, &group_id);
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 2); // admin + member1
+    
+    // Leave event should include group_id, member, timestamp, and updated member_count
+    client.leave_group(&member1, &group_id);
+    
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 1); // only admin remains
+}

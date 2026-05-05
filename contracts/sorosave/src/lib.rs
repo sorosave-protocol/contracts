@@ -163,6 +163,52 @@ impl SoroSaveContract {
     ) -> Result<(), ContractError> {
         admin::set_group_admin(&env, current_admin, group_id, new_admin)
     }
+
+    // --- Templates ---
+
+    pub fn set_template(
+        env: Env,
+        admin: Address,
+        name: String,
+        contribution_amount: i128,
+        cycle_length: u64,
+        max_members: u32,
+        token: Address,
+    ) -> Result<(), ContractError> {
+        if admin != storage::get_admin(&env) {
+            return Err(ContractError::Unauthorized);
+        }
+        let template = GroupTemplate {
+            contribution_amount,
+            cycle_length,
+            max_members,
+            token,
+        };
+        storage::set_template(&env, name, &template);
+        Ok(())
+    }
+
+    pub fn get_template(env: Env, name: String) -> Option<GroupTemplate> {
+        storage::get_template(&env, name)
+    }
+
+    pub fn create_group_from_template(
+        env: Env,
+        admin: Address,
+        group_name: String,
+        template_name: String,
+    ) -> Result<u64, ContractError> {
+        let template = storage::get_template(&env, template_name).ok_or(ContractError::NotFound)?;
+        group::create_group(
+            &env,
+            admin,
+            group_name,
+            template.token,
+            template.contribution_amount,
+            template.cycle_length,
+            template.max_members,
+        )
+    }
 }
 
 #[cfg(test)]

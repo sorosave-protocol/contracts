@@ -122,6 +122,19 @@ pub fn remove_dispute(env: &Env, group_id: u64) {
     env.storage().persistent().remove(&key);
 }
 
+// --- Group Template ---
+
+pub fn get_template(env: &Env, name: String) -> Option<crate::types::GroupTemplate> {
+    let key = DataKey::GroupTemplate(name);
+    env.storage().persistent().get(&key)
+}
+
+pub fn set_template(env: &Env, name: String, template: &crate::types::GroupTemplate) {
+    let key = DataKey::GroupTemplate(name);
+    env.storage().persistent().set(&key, template);
+    extend_persistent_ttl(env, &key);
+}
+
 // --- TTL Management ---
 
 fn extend_instance_ttl(env: &Env) {

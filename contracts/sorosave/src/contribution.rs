@@ -31,6 +31,11 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     if round_info.is_complete {
         return Err(ContractError::RoundNotActive);
     }
+    if env.ledger().timestamp() > round_info.deadline {
+        mark_defaults_for_round(env, group_id, &group, &mut round_info);
+        storage::set_round(env, group_id, &round_info);
+        return Err(ContractError::RoundNotActive);
+    }
 
     // Check if already contributed this round
     if round_info.contributions.contains_key(member.clone()) {
@@ -64,6 +69,29 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     Ok(())
 }
 
+pub fn mark_defaults(env: &Env, group_id: u64) -> Result<(), ContractError> {
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if group.status != GroupStatus::Active {
+        return Err(ContractError::GroupNotActive);
+    }
+
+    let mut round_info = storage::get_round(env, group_id, group.current_round)
+        .ok_or(ContractError::RoundNotActive)?;
+
+    if round_info.is_complete {
+        return Err(ContractError::RoundNotActive);
+    }
+    if env.ledger().timestamp() <= round_info.deadline {
+        return Err(ContractError::RoundNotActive);
+    }
+
+    mark_defaults_for_round(env, group_id, &group, &mut round_info);
+    storage::set_round(env, group_id, &round_info);
+
+    Ok(())
+}
+
 pub fn get_round_status(env: &Env, group_id: u64, round: u32) -> Result<RoundInfo, ContractError> {
     storage::get_round(env, group_id, round).ok_or(ContractError::RoundNotActive)
 }
@@ -77,4 +105,34 @@ pub fn has_contributed(
     let round_info =
         storage::get_round(env, group_id, round).ok_or(ContractError::RoundNotActive)?;
     Ok(round_info.contributions.contains_key(member))
+}
+
+fn mark_defaults_for_round(
+    env: &Env,
+    group_id: u64,
+    group: &crate::types::SavingsGroup,
+    round_info: &mut RoundInfo,
+) {
+    for member in group.members.iter() {
+        if round_info.contributions.contains_key(member.clone()) {
+            continue;
+        }
+        if has_defaulted(round_info, &member) {
+            continue;
+        }
+
+        round_info.defaulted_members.push_back(member.clone());
+        env.events()
+            .publish((crate::symbol_short!("default"),), (group_id, member));
+    }
+}
+
+fn has_defaulted(round_info: &RoundInfo, member: &Address) -> bool {
+    for defaulted in round_info.defaulted_members.iter() {
+        if defaulted == *member {
+            return true;
+        }
+    }
+
+    false
 }

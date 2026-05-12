@@ -37,6 +37,7 @@ pub struct RoundInfo {
     pub round_number: u32,
     pub recipient: Address,
     pub contributions: Map<Address, bool>,
+    pub defaulted_members: Vec<Address>,
     pub total_contributed: i128,
     pub is_complete: bool,
     pub deadline: u64,

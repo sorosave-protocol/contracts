@@ -100,6 +100,11 @@ impl SoroSaveContract {
         contribution::has_contributed(&env, member, group_id, round)
     }
 
+    /// Mark current-round members as defaulted after the contribution deadline.
+    pub fn mark_defaults(env: Env, group_id: u64) -> Result<(), ContractError> {
+        contribution::mark_defaults(&env, group_id)
+    }
+
     // ─── Payouts ────────────────────────────────────────────────────
 
     /// Distribute the pot to the current round's recipient. Anyone can call this

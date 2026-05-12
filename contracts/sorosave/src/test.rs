@@ -1,4 +1,8 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    token::StellarAssetClient,
+    Address, Env, String,
+};
 
 use crate::types::GroupStatus;
 use crate::{SoroSaveContract, SoroSaveContractClient};
@@ -96,6 +100,13 @@ fn test_start_group() {
     assert_eq!(group.current_round, 1);
     assert_eq!(group.total_rounds, 2);
     assert_eq!(group.payout_order.len(), 2);
+    assert_eq!(
+        client
+            .get_round_status(&group_id, &1)
+            .defaulted_members
+            .len(),
+        0
+    );
 }
 
 #[test]
@@ -221,4 +232,28 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_mark_defaults_after_deadline() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&admin, &group_id);
+
+    let round = client.get_round_status(&group_id, &1);
+    env.ledger().set_timestamp(round.deadline + 1);
+
+    client.mark_defaults(&group_id);
+
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.defaulted_members.len(), 2);
+    assert_eq!(round.defaulted_members.get(0).unwrap(), member1);
+    assert_eq!(round.defaulted_members.get(1).unwrap(), member2);
 }

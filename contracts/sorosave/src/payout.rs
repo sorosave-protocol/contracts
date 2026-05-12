@@ -18,21 +18,31 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
         return Err(ContractError::RoundNotComplete);
     }
 
+    let penalty = storage::get_member_penalty(env, group_id, &round_info.recipient);
+    let payout_amount = if penalty >= round_info.total_contributed {
+        0
+    } else {
+        round_info.total_contributed - penalty
+    };
+
+    if penalty > 0 {
+        let remaining_penalty = penalty - (round_info.total_contributed - payout_amount);
+        storage::set_member_penalty(env, group_id, &round_info.recipient, remaining_penalty);
+    }
+
     // Transfer the pot to the round's recipient
     let token_client = soroban_sdk::token::Client::new(env, &group.token);
-    token_client.transfer(
-        &env.current_contract_address(),
-        &round_info.recipient,
-        &round_info.total_contributed,
-    );
+    if payout_amount > 0 {
+        token_client.transfer(
+            &env.current_contract_address(),
+            &round_info.recipient,
+            &payout_amount,
+        );
+    }
 
     env.events().publish(
         (crate::symbol_short!("payout"),),
-        (
-            group_id,
-            round_info.recipient.clone(),
-            round_info.total_contributed,
-        ),
+        (group_id, round_info.recipient.clone(), payout_amount),
     );
 
     // Advance to next round or complete the group

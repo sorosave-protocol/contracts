@@ -122,6 +122,27 @@ pub fn remove_dispute(env: &Env, group_id: u64) {
     env.storage().persistent().remove(&key);
 }
 
+// --- Member Penalties ---
+
+pub fn get_member_penalty(env: &Env, group_id: u64, member: &Address) -> i128 {
+    let key = DataKey::MemberPenalty(group_id, member.clone());
+    let result: Option<i128> = env.storage().persistent().get(&key);
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+    result.unwrap_or(0)
+}
+
+pub fn set_member_penalty(env: &Env, group_id: u64, member: &Address, amount: i128) {
+    let key = DataKey::MemberPenalty(group_id, member.clone());
+    if amount <= 0 {
+        env.storage().persistent().remove(&key);
+    } else {
+        env.storage().persistent().set(&key, &amount);
+        extend_persistent_ttl(env, &key);
+    }
+}
+
 // --- TTL Management ---
 
 fn extend_instance_ttl(env: &Env) {

@@ -100,6 +100,31 @@ impl SoroSaveContract {
         contribution::has_contributed(&env, member, group_id, round)
     }
 
+    /// Configure the penalty rate in basis points for missed contributions.
+    pub fn set_penalty_rate(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        penalty_rate_bps: u32,
+    ) -> Result<(), ContractError> {
+        contribution::set_penalty_rate(&env, admin, group_id, penalty_rate_bps)
+    }
+
+    /// Apply a penalty to a member who missed the current round deadline.
+    pub fn apply_missed_penalty(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        member: Address,
+    ) -> Result<i128, ContractError> {
+        contribution::apply_missed_penalty(&env, admin, group_id, member)
+    }
+
+    /// Read the stored penalty balance for a group member.
+    pub fn get_member_penalty(env: Env, group_id: u64, member: Address) -> i128 {
+        contribution::get_member_penalty(&env, group_id, member)
+    }
+
     // ─── Payouts ────────────────────────────────────────────────────
 
     /// Distribute the pot to the current round's recipient. Anyone can call this

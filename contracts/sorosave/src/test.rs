@@ -1,4 +1,8 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    token::StellarAssetClient,
+    Address, Env, String,
+};
 
 use crate::types::GroupStatus;
 use crate::{SoroSaveContract, SoroSaveContractClient};
@@ -48,6 +52,7 @@ fn test_create_group() {
     assert_eq!(group.admin, admin);
     assert_eq!(group.contribution_amount, 1_000_000);
     assert_eq!(group.max_members, 5);
+    assert_eq!(group.penalty_rate_bps, 0);
     assert_eq!(group.status, GroupStatus::Forming);
     assert_eq!(group.members.len(), 1);
 }
@@ -221,4 +226,50 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_missed_contribution_penalty_reduces_future_payout() {
+    let (env, admin, client, _token) = setup_env();
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin.clone());
+    let token = token_id.address();
+    let token_sac = StellarAssetClient::new(&env, &token);
+
+    let member1 = Address::generate(&env);
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Penalty Test"),
+        &token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.set_penalty_rate(&admin, &group_id, &1_000);
+    client.start_group(&admin, &group_id);
+
+    let round = client.get_round_status(&group_id, &1);
+    env.ledger().set_timestamp(round.deadline + 1);
+
+    let penalty = client.apply_missed_penalty(&admin, &group_id, &member1);
+    assert_eq!(penalty, 100_000);
+    assert_eq!(client.get_member_penalty(&group_id, &member1), 100_000);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.distribute_payout(&group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+
+    let member_balance_before = soroban_sdk::token::Client::new(&env, &token).balance(&member1);
+    client.distribute_payout(&group_id);
+    let member_balance_after = soroban_sdk::token::Client::new(&env, &token).balance(&member1);
+
+    assert_eq!(member_balance_after - member_balance_before, 1_900_000);
+    assert_eq!(client.get_member_penalty(&group_id, &member1), 0);
 }

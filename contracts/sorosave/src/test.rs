@@ -1,4 +1,9 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use proptest::prelude::*;
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env, String,
+};
 
 use crate::types::GroupStatus;
 use crate::{SoroSaveContract, SoroSaveContractClient};
@@ -221,4 +226,83 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(16))]
+
+    #[test]
+    fn property_contributions_conserve_balances_and_pay_each_member_once(
+        member_count in 2u32..=20,
+        contribution_amount in 1i128..=1_000_000i128,
+    ) {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let contract_id = env.register(SoroSaveContract, (&admin,));
+        let client = SoroSaveContractClient::new(&env, &contract_id);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env.register_stellar_asset_contract_v2(token_admin);
+        let token = token_id.address();
+        let token_admin_client = StellarAssetClient::new(&env, &token);
+        let token_client = TokenClient::new(&env, &token);
+
+        let initial_balance = contribution_amount * i128::from(member_count + 1);
+        let mut members = soroban_sdk::Vec::new(&env);
+        members.push_back(admin.clone());
+        token_admin_client.mint(&admin, &initial_balance);
+
+        for _ in 1..member_count {
+            let member = Address::generate(&env);
+            token_admin_client.mint(&member, &initial_balance);
+            members.push_back(member);
+        }
+
+        let group_id = client.create_group(
+            &admin,
+            &String::from_str(&env, "Property Contribution Group"),
+            &token,
+            &contribution_amount,
+            &86400,
+            &member_count,
+        );
+
+        for index in 1..member_count {
+            let member = members.get(index).unwrap();
+            client.join_group(&member, &group_id);
+        }
+
+        client.start_group(&admin, &group_id);
+        let payout_order = client.get_payout_order(&group_id);
+        assert_eq!(payout_order.len(), member_count);
+
+        let mut recipient_seen = soroban_sdk::Vec::new(&env);
+        for _round in 1..=member_count {
+            let recipient = client.get_current_recipient(&group_id);
+            for seen in recipient_seen.iter() {
+                prop_assert!(seen != recipient);
+            }
+            recipient_seen.push_back(recipient);
+
+            for member in members.iter() {
+                client.contribute(&member, &group_id);
+            }
+
+            let round = client.get_round_status(&group_id, &client.get_group(&group_id).current_round);
+            prop_assert!(round.is_complete);
+            prop_assert_eq!(round.total_contributed, contribution_amount * i128::from(member_count));
+
+            client.distribute_payout(&group_id);
+            prop_assert_eq!(token_client.balance(&contract_id), 0);
+        }
+
+        prop_assert_eq!(recipient_seen.len(), member_count);
+        prop_assert_eq!(client.get_group(&group_id).status, GroupStatus::Completed);
+
+        for member in members.iter() {
+            prop_assert_eq!(token_client.balance(&member), initial_balance);
+        }
+    }
 }

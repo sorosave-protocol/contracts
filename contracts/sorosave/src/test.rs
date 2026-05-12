@@ -1,6 +1,6 @@
 use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
 
-use crate::types::GroupStatus;
+use crate::types::{GroupStatus, PayoutSchedule};
 use crate::{SoroSaveContract, SoroSaveContractClient};
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
@@ -47,9 +47,52 @@ fn test_create_group() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, admin);
     assert_eq!(group.contribution_amount, 1_000_000);
+    assert_eq!(group.payout_schedule, PayoutSchedule::Custom);
     assert_eq!(group.max_members, 5);
     assert_eq!(group.status, GroupStatus::Forming);
     assert_eq!(group.members.len(), 1);
+}
+
+#[test]
+fn test_create_group_with_preset_schedule() {
+    let (env, admin, client, token) = setup_env();
+
+    let weekly_id = client.create_group_with_schedule(
+        &admin,
+        &String::from_str(&env, "Weekly Group"),
+        &token,
+        &1_000_000,
+        &PayoutSchedule::Weekly,
+        &5,
+    );
+    let biweekly_id = client.create_group_with_schedule(
+        &admin,
+        &String::from_str(&env, "Biweekly Group"),
+        &token,
+        &1_000_000,
+        &PayoutSchedule::Biweekly,
+        &5,
+    );
+    let monthly_id = client.create_group_with_schedule(
+        &admin,
+        &String::from_str(&env, "Monthly Group"),
+        &token,
+        &1_000_000,
+        &PayoutSchedule::Monthly,
+        &5,
+    );
+
+    let weekly = client.get_group(&weekly_id);
+    assert_eq!(weekly.payout_schedule, PayoutSchedule::Weekly);
+    assert_eq!(weekly.cycle_length, 604_800);
+
+    let biweekly = client.get_group(&biweekly_id);
+    assert_eq!(biweekly.payout_schedule, PayoutSchedule::Biweekly);
+    assert_eq!(biweekly.cycle_length, 1_209_600);
+
+    let monthly = client.get_group(&monthly_id);
+    assert_eq!(monthly.payout_schedule, PayoutSchedule::Monthly);
+    assert_eq!(monthly.cycle_length, 2_592_000);
 }
 
 #[test]

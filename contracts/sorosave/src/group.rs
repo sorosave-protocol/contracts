@@ -2,7 +2,20 @@ use soroban_sdk::{Address, Env, Map, String, Vec};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{GroupStatus, RoundInfo, SavingsGroup};
+use crate::types::{GroupStatus, PayoutSchedule, RoundInfo, SavingsGroup};
+
+const WEEKLY_SECONDS: u64 = 7 * 24 * 60 * 60;
+const BIWEEKLY_SECONDS: u64 = 14 * 24 * 60 * 60;
+const MONTHLY_SECONDS: u64 = 30 * 24 * 60 * 60;
+
+struct GroupCreation {
+    name: String,
+    token: Address,
+    contribution_amount: i128,
+    payout_schedule: PayoutSchedule,
+    cycle_length: u64,
+    max_members: u32,
+}
 
 pub fn create_group(
     env: &Env,
@@ -13,12 +26,55 @@ pub fn create_group(
     cycle_length: u64,
     max_members: u32,
 ) -> Result<u64, ContractError> {
+    create_group_from_config(
+        env,
+        admin,
+        GroupCreation {
+            name,
+            token,
+            contribution_amount,
+            payout_schedule: PayoutSchedule::Custom,
+            cycle_length,
+            max_members,
+        },
+    )
+}
+
+pub fn create_group_with_schedule(
+    env: &Env,
+    admin: Address,
+    name: String,
+    token: Address,
+    contribution_amount: i128,
+    payout_schedule: PayoutSchedule,
+    max_members: u32,
+) -> Result<u64, ContractError> {
+    let cycle_length = cycle_length_for_schedule(&payout_schedule)?;
+    create_group_from_config(
+        env,
+        admin,
+        GroupCreation {
+            name,
+            token,
+            contribution_amount,
+            payout_schedule,
+            cycle_length,
+            max_members,
+        },
+    )
+}
+
+fn create_group_from_config(
+    env: &Env,
+    admin: Address,
+    config: GroupCreation,
+) -> Result<u64, ContractError> {
     admin.require_auth();
 
-    if contribution_amount <= 0 {
+    if config.contribution_amount <= 0 {
         return Err(ContractError::InvalidAmount);
     }
-    if max_members < 2 {
+    if config.max_members < 2 {
         return Err(ContractError::InsufficientMembers);
     }
 
@@ -30,12 +86,13 @@ pub fn create_group(
 
     let group = SavingsGroup {
         id: group_id,
-        name,
+        name: config.name,
         admin: admin.clone(),
-        token,
-        contribution_amount,
-        cycle_length,
-        max_members,
+        token: config.token,
+        contribution_amount: config.contribution_amount,
+        payout_schedule: config.payout_schedule,
+        cycle_length: config.cycle_length,
+        max_members: config.max_members,
         members,
         payout_order: Vec::new(env),
         current_round: 0,
@@ -51,6 +108,15 @@ pub fn create_group(
         .publish((crate::symbol_short!("grp_creat"),), group_id);
 
     Ok(group_id)
+}
+
+fn cycle_length_for_schedule(schedule: &PayoutSchedule) -> Result<u64, ContractError> {
+    match schedule {
+        PayoutSchedule::Weekly => Ok(WEEKLY_SECONDS),
+        PayoutSchedule::Biweekly => Ok(BIWEEKLY_SECONDS),
+        PayoutSchedule::Monthly => Ok(MONTHLY_SECONDS),
+        PayoutSchedule::Custom => Err(ContractError::InvalidAmount),
+    }
 }
 
 pub fn join_group(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {

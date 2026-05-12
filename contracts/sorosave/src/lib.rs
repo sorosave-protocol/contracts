@@ -49,6 +49,28 @@ impl SoroSaveContract {
         )
     }
 
+    /// Create a new savings group using a preset payout schedule.
+    /// Custom schedules preserve the caller-provided cycle length.
+    pub fn create_group_with_schedule(
+        env: Env,
+        admin: Address,
+        name: String,
+        token: Address,
+        contribution_amount: i128,
+        payout_schedule: PayoutSchedule,
+        max_members: u32,
+    ) -> Result<u64, ContractError> {
+        group::create_group_with_schedule(
+            &env,
+            admin,
+            name,
+            token,
+            contribution_amount,
+            payout_schedule,
+            max_members,
+        )
+    }
+
     /// Join an existing group that is still forming.
     pub fn join_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
         group::join_group(&env, member, group_id)

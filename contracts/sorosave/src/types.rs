@@ -11,6 +11,16 @@ pub enum GroupStatus {
     Paused,    // Admin has paused the group
 }
 
+/// Preset payout cadence options for a savings group.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum PayoutSchedule {
+    Weekly,
+    Biweekly,
+    Monthly,
+    Custom,
+}
+
 /// Core savings group configuration and state.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -20,6 +30,7 @@ pub struct SavingsGroup {
     pub admin: Address,
     pub token: Address,
     pub contribution_amount: i128,
+    pub payout_schedule: PayoutSchedule,
     pub cycle_length: u64,
     pub max_members: u32,
     pub members: Vec<Address>,

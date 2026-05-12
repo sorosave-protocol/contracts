@@ -32,21 +32,9 @@ impl SoroSaveContract {
     pub fn create_group(
         env: Env,
         admin: Address,
-        name: String,
-        token: Address,
-        contribution_amount: i128,
-        cycle_length: u64,
-        max_members: u32,
+        config: CreateGroupConfig,
     ) -> Result<u64, ContractError> {
-        group::create_group(
-            &env,
-            admin,
-            name,
-            token,
-            contribution_amount,
-            cycle_length,
-            max_members,
-        )
+        group::create_group(&env, admin, config)
     }
 
     /// Join an existing group that is still forming.

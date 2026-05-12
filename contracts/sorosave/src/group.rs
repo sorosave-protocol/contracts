@@ -1,24 +1,20 @@
-use soroban_sdk::{Address, Env, Map, String, Vec};
+use soroban_sdk::{Address, Env, Map, Vec};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{GroupStatus, RoundInfo, SavingsGroup};
+use crate::types::{CreateGroupConfig, GroupStatus, RoundInfo, SavingsGroup};
 
 pub fn create_group(
     env: &Env,
     admin: Address,
-    name: String,
-    token: Address,
-    contribution_amount: i128,
-    cycle_length: u64,
-    max_members: u32,
+    config: CreateGroupConfig,
 ) -> Result<u64, ContractError> {
     admin.require_auth();
 
-    if contribution_amount <= 0 {
+    if config.contribution_amount <= 0 {
         return Err(ContractError::InvalidAmount);
     }
-    if max_members < 2 {
+    if config.max_members < 2 {
         return Err(ContractError::InsufficientMembers);
     }
 
@@ -30,12 +26,13 @@ pub fn create_group(
 
     let group = SavingsGroup {
         id: group_id,
-        name,
+        name: config.name,
         admin: admin.clone(),
-        token,
-        contribution_amount,
-        cycle_length,
-        max_members,
+        token: config.token,
+        contribution_amount: config.contribution_amount,
+        cycle_length: config.cycle_length,
+        max_members: config.max_members,
+        randomize_order: config.randomize_order,
         members,
         payout_order: Vec::new(env),
         current_round: 0,
@@ -138,8 +135,11 @@ pub fn start_group(env: &Env, admin: Address, group_id: u64) -> Result<(), Contr
         return Err(ContractError::InsufficientMembers);
     }
 
-    // Set payout order to member join order (can be randomized later)
-    group.payout_order = group.members.clone();
+    group.payout_order = if group.randomize_order {
+        deterministic_shuffle(env, group_id, &group.members)
+    } else {
+        group.members.clone()
+    };
     group.total_rounds = group.members.len();
     group.current_round = 1;
     group.status = GroupStatus::Active;
@@ -170,4 +170,56 @@ pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError
 
 pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
     storage::get_member_groups(env, &member)
+}
+
+fn deterministic_shuffle(env: &Env, group_id: u64, members: &Vec<Address>) -> Vec<Address> {
+    let mut remaining = members.clone();
+    let mut shuffled = Vec::new(env);
+    let mut seed = env.ledger().timestamp() ^ ((env.ledger().sequence() as u64) << 32) ^ group_id;
+
+    while !remaining.is_empty() {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let index = (seed % remaining.len() as u64) as u32;
+        shuffled.push_back(remaining.get(index).unwrap());
+
+        let mut next_remaining = Vec::new(env);
+        for i in 0..remaining.len() {
+            if i != index {
+                next_remaining.push_back(remaining.get(i).unwrap());
+            }
+        }
+        remaining = next_remaining;
+    }
+
+    if members.len() > 1 && has_same_order(members, &shuffled) {
+        reverse_order(env, members)
+    } else {
+        shuffled
+    }
+}
+
+fn has_same_order(left: &Vec<Address>, right: &Vec<Address>) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    for i in 0..left.len() {
+        if left.get(i).unwrap() != right.get(i).unwrap() {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn reverse_order(env: &Env, members: &Vec<Address>) -> Vec<Address> {
+    let mut reversed = Vec::new(env);
+    let mut index = members.len();
+
+    while index > 0 {
+        index -= 1;
+        reversed.push_back(members.get(index).unwrap());
+    }
+
+    reversed
 }

@@ -11,6 +11,18 @@ pub enum GroupStatus {
     Paused,    // Admin has paused the group
 }
 
+/// Group creation parameters.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct CreateGroupConfig {
+    pub name: String,
+    pub token: Address,
+    pub contribution_amount: i128,
+    pub cycle_length: u64,
+    pub max_members: u32,
+    pub randomize_order: bool,
+}
+
 /// Core savings group configuration and state.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -22,6 +34,7 @@ pub struct SavingsGroup {
     pub contribution_amount: i128,
     pub cycle_length: u64,
     pub max_members: u32,
+    pub randomize_order: bool,
     pub members: Vec<Address>,
     pub payout_order: Vec<Address>,
     pub current_round: u32,

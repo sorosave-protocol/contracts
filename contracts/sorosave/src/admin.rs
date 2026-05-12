@@ -1,20 +1,21 @@
 use soroban_sdk::{Address, Env, String};
 
 use crate::errors::ContractError;
+use crate::multisig;
 use crate::storage;
-use crate::types::{Dispute, GroupStatus};
+use crate::types::{Dispute, GroupStatus, MultiSigAction};
 
 pub fn pause_group(env: &Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
     admin.require_auth();
 
     let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
 
-    if admin != group.admin && admin != storage::get_admin(env) {
-        return Err(ContractError::Unauthorized);
-    }
-
     if group.status == GroupStatus::Completed {
         return Err(ContractError::GroupCompleted);
+    }
+
+    if !multisig::approve_sensitive_action(env, &group, admin, MultiSigAction::Pause)? {
+        return Ok(());
     }
 
     group.status = GroupStatus::Paused;
@@ -31,12 +32,12 @@ pub fn resume_group(env: &Env, admin: Address, group_id: u64) -> Result<(), Cont
 
     let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
 
-    if admin != group.admin && admin != storage::get_admin(env) {
-        return Err(ContractError::Unauthorized);
-    }
-
     if group.status != GroupStatus::Paused {
         return Err(ContractError::GroupNotActive);
+    }
+
+    if !multisig::approve_sensitive_action(env, &group, admin, MultiSigAction::Resume)? {
+        return Ok(());
     }
 
     group.status = GroupStatus::Active;
@@ -95,7 +96,7 @@ pub fn resolve_dispute(env: &Env, admin: Address, group_id: u64) -> Result<(), C
 
     let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
 
-    if admin != group.admin && admin != storage::get_admin(env) {
+    if !multisig::can_single_admin_act(env, &group, &admin) {
         return Err(ContractError::Unauthorized);
     }
 
@@ -118,13 +119,12 @@ pub fn emergency_withdraw(env: &Env, admin: Address, group_id: u64) -> Result<()
 
     let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
 
-    // Only protocol admin can trigger emergency withdraw
-    if admin != storage::get_admin(env) {
-        return Err(ContractError::Unauthorized);
-    }
-
     if group.status == GroupStatus::Completed {
         return Err(ContractError::GroupCompleted);
+    }
+
+    if !multisig::approve_sensitive_action(env, &group, admin, MultiSigAction::EmergencyWithdraw)? {
+        return Ok(());
     }
 
     // Calculate remaining balance and distribute equally
@@ -166,6 +166,16 @@ pub fn set_group_admin(
     }
 
     group.admin = new_admin.clone();
+    let mut has_new_admin = false;
+    for admin in group.admins.iter() {
+        if admin == new_admin {
+            has_new_admin = true;
+            break;
+        }
+    }
+    if !has_new_admin {
+        group.admins.push_back(new_admin.clone());
+    }
     storage::set_group(env, &group);
 
     env.events()

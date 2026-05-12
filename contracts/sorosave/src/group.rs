@@ -27,11 +27,15 @@ pub fn create_group(
 
     let mut members = Vec::new(env);
     members.push_back(admin.clone());
+    let mut admins = Vec::new(env);
+    admins.push_back(admin.clone());
 
     let group = SavingsGroup {
         id: group_id,
         name,
         admin: admin.clone(),
+        admins,
+        admin_threshold: 1,
         token,
         contribution_amount,
         cycle_length,

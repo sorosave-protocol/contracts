@@ -6,6 +6,7 @@ mod admin;
 mod contribution;
 mod errors;
 mod group;
+mod multisig;
 mod payout;
 mod storage;
 mod types;
@@ -162,6 +163,36 @@ impl SoroSaveContract {
         new_admin: Address,
     ) -> Result<(), ContractError> {
         admin::set_group_admin(&env, current_admin, group_id, new_admin)
+    }
+
+    /// Add another group admin.
+    pub fn add_admin(
+        env: Env,
+        current_admin: Address,
+        group_id: u64,
+        new_admin: Address,
+    ) -> Result<(), ContractError> {
+        multisig::add_admin(&env, current_admin, group_id, new_admin)
+    }
+
+    /// Remove a secondary group admin.
+    pub fn remove_admin(
+        env: Env,
+        current_admin: Address,
+        group_id: u64,
+        admin_to_remove: Address,
+    ) -> Result<(), ContractError> {
+        multisig::remove_admin(&env, current_admin, group_id, admin_to_remove)
+    }
+
+    /// Set the number of admin approvals required for sensitive group actions.
+    pub fn set_threshold(
+        env: Env,
+        current_admin: Address,
+        group_id: u64,
+        threshold: u32,
+    ) -> Result<(), ContractError> {
+        multisig::set_threshold(&env, current_admin, group_id, threshold)
     }
 }
 

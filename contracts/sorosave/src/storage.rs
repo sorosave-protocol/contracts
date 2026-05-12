@@ -1,6 +1,6 @@
 use soroban_sdk::{Address, Env, Vec};
 
-use crate::types::{DataKey, Dispute, RoundInfo, SavingsGroup};
+use crate::types::{DataKey, Dispute, MultiSigAction, MultiSigProposal, RoundInfo, SavingsGroup};
 
 const INSTANCE_TTL_THRESHOLD: u32 = 100;
 const INSTANCE_TTL_EXTEND: u32 = 500;
@@ -119,6 +119,32 @@ pub fn set_dispute(env: &Env, group_id: u64, dispute: &Dispute) {
 
 pub fn remove_dispute(env: &Env, group_id: u64) {
     let key = DataKey::Dispute(group_id);
+    env.storage().persistent().remove(&key);
+}
+
+// --- Multi-Sig Proposals ---
+
+pub fn get_multisig_proposal(
+    env: &Env,
+    group_id: u64,
+    action: &MultiSigAction,
+) -> Option<MultiSigProposal> {
+    let key = DataKey::MultiSigProposal(group_id, action.clone());
+    let result = env.storage().persistent().get(&key);
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+    result
+}
+
+pub fn set_multisig_proposal(env: &Env, group_id: u64, proposal: &MultiSigProposal) {
+    let key = DataKey::MultiSigProposal(group_id, proposal.action.clone());
+    env.storage().persistent().set(&key, proposal);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn remove_multisig_proposal(env: &Env, group_id: u64, action: &MultiSigAction) {
+    let key = DataKey::MultiSigProposal(group_id, action.clone());
     env.storage().persistent().remove(&key);
 }
 

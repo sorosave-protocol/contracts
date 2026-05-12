@@ -50,6 +50,9 @@ fn test_create_group() {
     assert_eq!(group.max_members, 5);
     assert_eq!(group.status, GroupStatus::Forming);
     assert_eq!(group.members.len(), 1);
+    assert_eq!(group.admins.len(), 1);
+    assert_eq!(group.admins.get(0).unwrap(), admin);
+    assert_eq!(group.admin_threshold, 1);
 }
 
 #[test]
@@ -221,4 +224,79 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+    assert_eq!(group.admins.len(), 2);
+    assert_eq!(group.admins.get(1).unwrap(), new_admin);
+}
+
+#[test]
+fn test_multisig_pause_requires_threshold() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    let admin2 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.add_admin(&admin, &group_id, &admin2);
+    client.set_threshold(&admin, &group_id, &2);
+    client.start_group(&admin, &group_id);
+
+    client.pause_group(&admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+
+    client.pause_group(&admin2, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Paused);
+}
+
+#[test]
+fn test_multisig_resume_requires_threshold() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    let admin2 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.add_admin(&admin, &group_id, &admin2);
+    client.set_threshold(&admin, &group_id, &2);
+    client.start_group(&admin, &group_id);
+    client.pause_group(&admin, &group_id);
+    client.pause_group(&admin2, &group_id);
+
+    client.resume_group(&admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Paused);
+
+    client.resume_group(&admin2, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+}
+
+#[test]
+fn test_multisig_admin_management_validates_threshold() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    let admin2 = Address::generate(&env);
+
+    client.add_admin(&admin, &group_id, &admin2);
+    client.set_threshold(&admin, &group_id, &2);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.admins.len(), 2);
+    assert_eq!(group.admin_threshold, 2);
+}
+
+#[test]
+fn test_multisig_emergency_withdraw_requires_threshold() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    let admin2 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.add_admin(&admin, &group_id, &admin2);
+    client.set_threshold(&admin, &group_id, &2);
+    client.start_group(&admin, &group_id);
+
+    client.emergency_withdraw(&admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+
+    client.emergency_withdraw(&admin2, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Completed);
 }

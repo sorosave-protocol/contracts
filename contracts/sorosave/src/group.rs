@@ -36,6 +36,7 @@ pub fn create_group(
         contribution_amount,
         cycle_length,
         max_members,
+        early_payout_threshold_bps: 10_000,
         members,
         payout_order: Vec::new(env),
         current_round: 0,

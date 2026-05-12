@@ -22,6 +22,7 @@ pub struct SavingsGroup {
     pub contribution_amount: i128,
     pub cycle_length: u64,
     pub max_members: u32,
+    pub early_payout_threshold_bps: u32,
     pub members: Vec<Address>,
     pub payout_order: Vec<Address>,
     pub current_round: u32,

@@ -108,6 +108,25 @@ impl SoroSaveContract {
         payout::distribute_payout(&env, group_id)
     }
 
+    /// Request an early payout once the configured threshold has been contributed.
+    pub fn request_early_payout(
+        env: Env,
+        recipient: Address,
+        group_id: u64,
+    ) -> Result<(), ContractError> {
+        payout::request_early_payout(&env, recipient, group_id)
+    }
+
+    /// Configure early-payout threshold in basis points.
+    pub fn set_early_payout_threshold(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        threshold_bps: u32,
+    ) -> Result<(), ContractError> {
+        payout::set_early_payout_threshold(&env, admin, group_id, threshold_bps)
+    }
+
     /// Get the payout order for a group.
     pub fn get_payout_order(env: Env, group_id: u64) -> Result<Vec<Address>, ContractError> {
         payout::get_payout_order(&env, group_id)

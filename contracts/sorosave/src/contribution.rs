@@ -1,6 +1,7 @@
 use soroban_sdk::{Address, Env};
 
 use crate::errors::ContractError;
+use crate::r#yield as yield_source;
 use crate::storage;
 use crate::types::{GroupStatus, RoundInfo};
 
@@ -52,6 +53,7 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     // Check if all members have contributed
     if round_info.contributions.len() == group.members.len() {
         round_info.is_complete = true;
+        yield_source::deposit_idle_funds(env, &group, &round_info)?;
     }
 
     storage::set_round(env, group_id, &round_info);

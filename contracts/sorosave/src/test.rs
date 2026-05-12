@@ -48,6 +48,7 @@ fn test_create_group() {
     assert_eq!(group.admin, admin);
     assert_eq!(group.contribution_amount, 1_000_000);
     assert_eq!(group.max_members, 5);
+    assert_eq!(group.yield_rate_bps, 0);
     assert_eq!(group.status, GroupStatus::Forming);
     assert_eq!(group.members.len(), 1);
 }
@@ -221,4 +222,40 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_yield_added_to_payout_when_configured() {
+    let (env, admin, client, _token) = setup_env();
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin.clone());
+    let token = token_id.address();
+    let token_sac = StellarAssetClient::new(&env, &token);
+
+    let member1 = Address::generate(&env);
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Yield Test"),
+        &token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.set_yield_rate(&admin, &group_id, &1_000);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+
+    token_sac.mint(&client.address, &200_000);
+
+    let admin_balance_before = soroban_sdk::token::Client::new(&env, &token).balance(&admin);
+    client.distribute_payout(&group_id);
+    let admin_balance_after = soroban_sdk::token::Client::new(&env, &token).balance(&admin);
+
+    assert_eq!(admin_balance_after - admin_balance_before, 2_200_000);
 }

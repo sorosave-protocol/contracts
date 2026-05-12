@@ -9,6 +9,7 @@ mod group;
 mod payout;
 mod storage;
 mod types;
+mod r#yield;
 
 pub use errors::ContractError;
 pub use types::*;
@@ -98,6 +99,34 @@ impl SoroSaveContract {
         round: u32,
     ) -> Result<bool, ContractError> {
         contribution::has_contributed(&env, member, group_id, round)
+    }
+
+    /// Configure the fixed yield rate used by the current yield-source integration.
+    pub fn set_yield_rate(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        yield_rate_bps: u32,
+    ) -> Result<(), ContractError> {
+        admin.require_auth();
+
+        let mut group = storage::get_group(&env, group_id).ok_or(ContractError::GroupNotFound)?;
+        if admin != group.admin {
+            return Err(ContractError::Unauthorized);
+        }
+        if yield_rate_bps > 10_000 {
+            return Err(ContractError::InvalidAmount);
+        }
+
+        group.yield_rate_bps = yield_rate_bps;
+        storage::set_group(&env, &group);
+
+        env.events().publish(
+            (crate::symbol_short!("yieldcfg"),),
+            (group_id, yield_rate_bps),
+        );
+
+        Ok(())
     }
 
     // ─── Payouts ────────────────────────────────────────────────────

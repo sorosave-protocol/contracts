@@ -1,6 +1,6 @@
 use soroban_sdk::{Address, Env, Vec};
 
-use crate::types::{DataKey, Dispute, RoundInfo, SavingsGroup};
+use crate::types::{DataKey, Dispute, RoundInfo, SavingsGroup, YieldPosition};
 
 const INSTANCE_TTL_THRESHOLD: u32 = 100;
 const INSTANCE_TTL_EXTEND: u32 = 500;
@@ -119,6 +119,28 @@ pub fn set_dispute(env: &Env, group_id: u64, dispute: &Dispute) {
 
 pub fn remove_dispute(env: &Env, group_id: u64) {
     let key = DataKey::Dispute(group_id);
+    env.storage().persistent().remove(&key);
+}
+
+// --- Yield Positions ---
+
+pub fn get_yield_position(env: &Env, group_id: u64, round: u32) -> Option<YieldPosition> {
+    let key = DataKey::YieldPosition(group_id, round);
+    let result = env.storage().persistent().get(&key);
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+    result
+}
+
+pub fn set_yield_position(env: &Env, group_id: u64, round: u32, position: &YieldPosition) {
+    let key = DataKey::YieldPosition(group_id, round);
+    env.storage().persistent().set(&key, position);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn remove_yield_position(env: &Env, group_id: u64, round: u32) {
+    let key = DataKey::YieldPosition(group_id, round);
     env.storage().persistent().remove(&key);
 }
 

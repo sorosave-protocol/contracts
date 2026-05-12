@@ -22,6 +22,7 @@ pub struct SavingsGroup {
     pub contribution_amount: i128,
     pub cycle_length: u64,
     pub max_members: u32,
+    pub yield_rate_bps: u32,
     pub members: Vec<Address>,
     pub payout_order: Vec<Address>,
     pub current_round: u32,
@@ -51,6 +52,15 @@ pub struct Dispute {
     pub raised_at: u64,
 }
 
+/// Tracks idle funds deposited into a yield source for a round.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct YieldPosition {
+    pub principal: i128,
+    pub earned_yield: i128,
+    pub deposited_at: u64,
+}
+
 /// Storage keys for all contract data.
 #[contracttype]
 #[derive(Clone)]
@@ -61,4 +71,5 @@ pub enum DataKey {
     Round(u64, u32),
     MemberGroups(Address),
     Dispute(u64),
+    YieldPosition(u64, u32),
 }

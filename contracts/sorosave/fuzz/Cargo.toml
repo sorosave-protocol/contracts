@@ -1,0 +1,36 @@
+[package]
+name = "sorosave-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+soroban-sdk = { version = "22.0.1", features = ["testutils"] }
+sorosave = { path = ".." }
+
+[[bin]]
+name = "create_group"
+path = "fuzz_targets/create_group.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "contribute"
+path = "fuzz_targets/contribute.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "distribute_payout"
+path = "fuzz_targets/distribute_payout.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

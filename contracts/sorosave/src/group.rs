@@ -37,10 +37,12 @@ pub fn create_group(
         cycle_length,
         max_members,
         members,
+        next_cycle_opt_outs: Vec::new(env),
         payout_order: Vec::new(env),
         current_round: 0,
         total_rounds: 0,
         status: GroupStatus::Forming,
+        auto_restart: false,
         created_at: env.ledger().timestamp(),
     };
 
@@ -170,4 +172,62 @@ pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError
 
 pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
     storage::get_member_groups(env, &member)
+}
+
+pub fn set_auto_restart(
+    env: &Env,
+    admin: Address,
+    group_id: u64,
+    auto_restart: bool,
+) -> Result<(), ContractError> {
+    admin.require_auth();
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if admin != group.admin {
+        return Err(ContractError::Unauthorized);
+    }
+
+    group.auto_restart = auto_restart;
+    storage::set_group(env, &group);
+
+    env.events().publish(
+        (crate::symbol_short!("auto_rst"),),
+        (group_id, auto_restart),
+    );
+
+    Ok(())
+}
+
+pub fn opt_out_next_cycle(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
+    member.require_auth();
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if group.status != GroupStatus::Active {
+        return Err(ContractError::GroupNotActive);
+    }
+
+    let mut is_member = false;
+    for group_member in group.members.iter() {
+        if group_member == member {
+            is_member = true;
+            break;
+        }
+    }
+    if !is_member {
+        return Err(ContractError::NotMember);
+    }
+
+    for opted_out in group.next_cycle_opt_outs.iter() {
+        if opted_out == member {
+            return Ok(());
+        }
+    }
+
+    group.next_cycle_opt_outs.push_back(member.clone());
+    storage::set_group(env, &group);
+
+    env.events()
+        .publish((crate::symbol_short!("opt_out"),), (group_id, member));
+
+    Ok(())
 }

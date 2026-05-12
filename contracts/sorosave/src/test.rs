@@ -50,6 +50,8 @@ fn test_create_group() {
     assert_eq!(group.max_members, 5);
     assert_eq!(group.status, GroupStatus::Forming);
     assert_eq!(group.members.len(), 1);
+    assert!(!group.auto_restart);
+    assert_eq!(group.next_cycle_opt_outs.len(), 0);
 }
 
 #[test]
@@ -149,6 +151,60 @@ fn test_full_cycle() {
     // Group should be completed
     let group = client.get_group(&group_id);
     assert_eq!(group.status, GroupStatus::Completed);
+}
+
+#[test]
+fn test_auto_restarts_group_after_final_round() {
+    let (env, admin, client, _token) = setup_env();
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    for member in [&admin, &member1, &member2, &member3] {
+        token_sac.mint(member, &10_000_000);
+    }
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Auto Restart Group"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+    client.set_auto_restart(&admin, &group_id, &true);
+    client.start_group(&admin, &group_id);
+
+    client.opt_out_next_cycle(&member3, &group_id);
+
+    for _round in 1..=4 {
+        client.contribute(&admin, &group_id);
+        client.contribute(&member1, &group_id);
+        client.contribute(&member2, &group_id);
+        client.contribute(&member3, &group_id);
+        client.distribute_payout(&group_id);
+    }
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Active);
+    assert!(group.auto_restart);
+    assert_eq!(group.members.len(), 3);
+    assert_eq!(group.total_rounds, 3);
+    assert_eq!(group.current_round, 1);
+    assert_eq!(group.next_cycle_opt_outs.len(), 0);
+    assert_eq!(group.payout_order.get(0).unwrap(), member1);
+    assert_eq!(group.payout_order.get(1).unwrap(), member2);
+    assert_eq!(group.payout_order.get(2).unwrap(), admin);
+
+    let new_round = client.get_round_status(&group_id, &1);
+    assert!(!new_round.is_complete);
+    assert_eq!(new_round.recipient, member1);
 }
 
 #[test]

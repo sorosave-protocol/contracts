@@ -74,6 +74,25 @@ impl SoroSaveContract {
         group::get_member_groups(&env, member)
     }
 
+    /// Configure whether a group restarts after its final round completes.
+    pub fn set_auto_restart(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        auto_restart: bool,
+    ) -> Result<(), ContractError> {
+        group::set_auto_restart(&env, admin, group_id, auto_restart)
+    }
+
+    /// Opt a member out of the next automatically restarted cycle.
+    pub fn opt_out_next_cycle(
+        env: Env,
+        member: Address,
+        group_id: u64,
+    ) -> Result<(), ContractError> {
+        group::opt_out_next_cycle(&env, member, group_id)
+    }
+
     // ─── Contributions ──────────────────────────────────────────────
 
     /// Contribute to the current round of a group.

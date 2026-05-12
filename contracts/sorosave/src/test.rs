@@ -46,6 +46,7 @@ fn test_create_group() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, admin);
+    assert_eq!(group.cloned_from, 0);
     assert_eq!(group.contribution_amount, 1_000_000);
     assert_eq!(group.max_members, 5);
     assert_eq!(group.status, GroupStatus::Forming);
@@ -149,6 +150,63 @@ fn test_full_cycle() {
     // Group should be completed
     let group = client.get_group(&group_id);
     assert_eq!(group.status, GroupStatus::Completed);
+}
+
+#[test]
+fn test_clone_completed_group() {
+    let (env, admin, client, _token) = setup_env();
+    let member1 = Address::generate(&env);
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let source_group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Clone Source"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &source_group_id);
+    client.start_group(&admin, &source_group_id);
+
+    client.contribute(&admin, &source_group_id);
+    client.contribute(&member1, &source_group_id);
+    client.distribute_payout(&source_group_id);
+    client.contribute(&admin, &source_group_id);
+    client.contribute(&member1, &source_group_id);
+    client.distribute_payout(&source_group_id);
+
+    assert_eq!(
+        client.get_group(&source_group_id).status,
+        GroupStatus::Completed
+    );
+
+    let clone_id = client.clone_group(&admin, &source_group_id);
+    let cloned_group = client.get_group(&clone_id);
+    assert_eq!(cloned_group.cloned_from, source_group_id);
+    assert_eq!(cloned_group.admin, admin);
+    assert_eq!(cloned_group.token, token_id.address());
+    assert_eq!(cloned_group.contribution_amount, 1_000_000);
+    assert_eq!(cloned_group.cycle_length, 86400);
+    assert_eq!(cloned_group.max_members, 5);
+    assert_eq!(cloned_group.status, GroupStatus::Forming);
+    assert_eq!(cloned_group.members.len(), 2);
+    assert_eq!(cloned_group.current_round, 0);
+    assert_eq!(cloned_group.total_rounds, 0);
+    assert_eq!(cloned_group.payout_order.len(), 0);
+
+    let admin_groups = client.get_member_groups(&admin);
+    assert_eq!(admin_groups.len(), 2);
+    assert_eq!(admin_groups.get(1).unwrap(), clone_id);
+
+    let member_groups = client.get_member_groups(&member1);
+    assert_eq!(member_groups.len(), 2);
+    assert_eq!(member_groups.get(1).unwrap(), clone_id);
 }
 
 #[test]

@@ -30,6 +30,7 @@ pub fn create_group(
 
     let group = SavingsGroup {
         id: group_id,
+        cloned_from: 0,
         name,
         admin: admin.clone(),
         token,
@@ -170,4 +171,49 @@ pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError
 
 pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
     storage::get_member_groups(env, &member)
+}
+
+pub fn clone_group(env: &Env, admin: Address, source_group_id: u64) -> Result<u64, ContractError> {
+    admin.require_auth();
+    let source_group =
+        storage::get_group(env, source_group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if admin != source_group.admin {
+        return Err(ContractError::Unauthorized);
+    }
+    if source_group.status != GroupStatus::Completed {
+        return Err(ContractError::GroupNotActive);
+    }
+
+    let group_id = storage::get_group_counter(env) + 1;
+    storage::set_group_counter(env, group_id);
+
+    let group = SavingsGroup {
+        id: group_id,
+        cloned_from: source_group.id,
+        name: source_group.name,
+        admin: admin.clone(),
+        token: source_group.token,
+        contribution_amount: source_group.contribution_amount,
+        cycle_length: source_group.cycle_length,
+        max_members: source_group.max_members,
+        members: source_group.members,
+        payout_order: Vec::new(env),
+        current_round: 0,
+        total_rounds: 0,
+        status: GroupStatus::Forming,
+        created_at: env.ledger().timestamp(),
+    };
+
+    storage::set_group(env, &group);
+    for member in group.members.iter() {
+        storage::add_member_group(env, &member, group_id);
+    }
+
+    env.events().publish(
+        (crate::symbol_short!("grp_clone"),),
+        (source_group_id, group_id),
+    );
+
+    Ok(group_id)
 }

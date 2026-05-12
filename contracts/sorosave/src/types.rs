@@ -16,6 +16,7 @@ pub enum GroupStatus {
 #[derive(Clone, Debug)]
 pub struct SavingsGroup {
     pub id: u64,
+    pub cloned_from: u64,
     pub name: String,
     pub admin: Address,
     pub token: Address,

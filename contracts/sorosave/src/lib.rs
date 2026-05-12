@@ -74,6 +74,15 @@ impl SoroSaveContract {
         group::get_member_groups(&env, member)
     }
 
+    /// Clone a completed group into a new forming group with the same settings and members.
+    pub fn clone_group(
+        env: Env,
+        admin: Address,
+        source_group_id: u64,
+    ) -> Result<u64, ContractError> {
+        group::clone_group(&env, admin, source_group_id)
+    }
+
     // ─── Contributions ──────────────────────────────────────────────
 
     /// Contribute to the current round of a group.

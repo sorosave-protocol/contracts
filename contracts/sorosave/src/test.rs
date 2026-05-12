@@ -152,6 +152,49 @@ fn test_full_cycle() {
 }
 
 #[test]
+fn test_partial_contributions_accumulate_until_complete() {
+    let (env, admin, client, _token) = setup_env();
+    let member1 = Address::generate(&env);
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Partial Contributions"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute_partial(&member1, &group_id, &400_000);
+    assert_eq!(
+        client.get_member_contribution_progress(&member1, &group_id, &1),
+        400_000
+    );
+    assert!(!client.has_contributed(&member1, &group_id, &1));
+    assert!(!client.get_round_status(&group_id, &1).is_complete);
+
+    client.contribute_partial(&member1, &group_id, &600_000);
+    assert_eq!(
+        client.get_member_contribution_progress(&member1, &group_id, &1),
+        1_000_000
+    );
+    assert!(client.has_contributed(&member1, &group_id, &1));
+
+    client.contribute(&admin, &group_id);
+    let round = client.get_round_status(&group_id, &1);
+    assert!(round.is_complete);
+    assert_eq!(round.total_contributed, 2_000_000);
+}
+
+#[test]
 fn test_member_groups() {
     let (env, admin, client, token) = setup_env();
 

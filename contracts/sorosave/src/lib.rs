@@ -81,6 +81,16 @@ impl SoroSaveContract {
         contribution::contribute(&env, member, group_id)
     }
 
+    /// Contribute part of the required amount to the current round of a group.
+    pub fn contribute_partial(
+        env: Env,
+        member: Address,
+        group_id: u64,
+        amount: i128,
+    ) -> Result<(), ContractError> {
+        contribution::contribute_partial(&env, member, group_id, amount)
+    }
+
     /// Get the status of a specific round.
     pub fn get_round_status(
         env: Env,
@@ -98,6 +108,16 @@ impl SoroSaveContract {
         round: u32,
     ) -> Result<bool, ContractError> {
         contribution::has_contributed(&env, member, group_id, round)
+    }
+
+    /// Get a member's cumulative contribution amount for a round.
+    pub fn get_member_contribution_progress(
+        env: Env,
+        member: Address,
+        group_id: u64,
+        round: u32,
+    ) -> Result<i128, ContractError> {
+        contribution::get_member_contribution_progress(&env, member, group_id, round)
     }
 
     // ─── Payouts ────────────────────────────────────────────────────

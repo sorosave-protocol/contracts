@@ -152,6 +152,48 @@ fn test_full_cycle() {
 }
 
 #[test]
+fn test_delegate_can_contribute_for_member() {
+    let (env, admin, client, _token) = setup_env();
+    let member = Address::generate(&env);
+    let delegate = Address::generate(&env);
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&delegate, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Delegated Contributions"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member, &group_id);
+
+    client.set_delegate(&member, &delegate, &group_id);
+    assert_eq!(
+        client.get_delegate(&member, &group_id),
+        Some(delegate.clone())
+    );
+
+    client.start_group(&admin, &group_id);
+    client.contribute_for(&delegate, &member, &group_id);
+
+    assert!(client.has_contributed(&member, &group_id, &1));
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.total_contributed, 1_000_000);
+
+    client.contribute(&admin, &group_id);
+    assert!(client.get_round_status(&group_id, &1).is_complete);
+
+    client.revoke_delegate(&member, &group_id);
+    assert_eq!(client.get_delegate(&member, &group_id), None);
+}
+
+#[test]
 fn test_member_groups() {
     let (env, admin, client, token) = setup_env();
 

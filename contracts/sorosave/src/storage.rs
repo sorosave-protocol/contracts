@@ -103,6 +103,28 @@ pub fn remove_member_group(env: &Env, member: &Address, group_id: u64) {
     extend_persistent_ttl(env, &key);
 }
 
+// --- Delegates ---
+
+pub fn get_delegate(env: &Env, group_id: u64, member: &Address) -> Option<Address> {
+    let key = DataKey::Delegate(group_id, member.clone());
+    let result = env.storage().persistent().get(&key);
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+    result
+}
+
+pub fn set_delegate(env: &Env, group_id: u64, member: &Address, delegate: &Address) {
+    let key = DataKey::Delegate(group_id, member.clone());
+    env.storage().persistent().set(&key, delegate);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn remove_delegate(env: &Env, group_id: u64, member: &Address) {
+    let key = DataKey::Delegate(group_id, member.clone());
+    env.storage().persistent().remove(&key);
+}
+
 // --- Dispute ---
 
 #[allow(dead_code)]

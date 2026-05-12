@@ -7,7 +7,7 @@ use crate::types::{GroupStatus, RoundInfo};
 pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
     member.require_auth();
 
-    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
 
     if group.status != GroupStatus::Active {
         return Err(ContractError::GroupNotActive);
@@ -48,6 +48,15 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     // Record contribution
     round_info.contributions.set(member.clone(), true);
     round_info.total_contributed += group.contribution_amount;
+    group.goal_contributed += group.contribution_amount;
+    if group.savings_goal > 0 && !group.goal_reached && group.goal_contributed >= group.savings_goal
+    {
+        group.goal_reached = true;
+        env.events().publish(
+            (crate::symbol_short!("goal_hit"),),
+            (group_id, group.goal_contributed),
+        );
+    }
 
     // Check if all members have contributed
     if round_info.contributions.len() == group.members.len() {
@@ -55,6 +64,7 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     }
 
     storage::set_round(env, group_id, &round_info);
+    storage::set_group(env, &group);
 
     env.events().publish(
         (crate::symbol_short!("contrib"),),

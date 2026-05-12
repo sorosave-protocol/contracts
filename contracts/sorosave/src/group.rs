@@ -34,6 +34,9 @@ pub fn create_group(
         admin: admin.clone(),
         token,
         contribution_amount,
+        savings_goal: 0,
+        goal_contributed: 0,
+        goal_reached: false,
         cycle_length,
         max_members,
         members,
@@ -170,4 +173,46 @@ pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError
 
 pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
     storage::get_member_groups(env, &member)
+}
+
+pub fn set_savings_goal(
+    env: &Env,
+    admin: Address,
+    group_id: u64,
+    savings_goal: i128,
+) -> Result<(), ContractError> {
+    admin.require_auth();
+    if savings_goal < 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    if admin != group.admin {
+        return Err(ContractError::Unauthorized);
+    }
+
+    group.savings_goal = savings_goal;
+    group.goal_reached = savings_goal > 0 && group.goal_contributed >= savings_goal;
+    storage::set_group(env, &group);
+
+    env.events().publish(
+        (crate::symbol_short!("goal_set"),),
+        (group_id, savings_goal),
+    );
+
+    Ok(())
+}
+
+pub fn get_progress(env: &Env, group_id: u64) -> Result<u32, ContractError> {
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    if group.savings_goal <= 0 {
+        return Ok(0);
+    }
+
+    let progress = (group.goal_contributed * 100) / group.savings_goal;
+    if progress >= 100 {
+        Ok(100)
+    } else {
+        Ok(progress as u32)
+    }
 }

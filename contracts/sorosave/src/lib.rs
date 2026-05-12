@@ -74,6 +74,21 @@ impl SoroSaveContract {
         group::get_member_groups(&env, member)
     }
 
+    /// Set an optional collective savings goal for a group.
+    pub fn set_savings_goal(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        savings_goal: i128,
+    ) -> Result<(), ContractError> {
+        group::set_savings_goal(&env, admin, group_id, savings_goal)
+    }
+
+    /// Return the group's savings-goal progress as a percentage from 0 to 100.
+    pub fn get_progress(env: Env, group_id: u64) -> Result<u32, ContractError> {
+        group::get_progress(&env, group_id)
+    }
+
     // ─── Contributions ──────────────────────────────────────────────
 
     /// Contribute to the current round of a group.

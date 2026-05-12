@@ -47,6 +47,9 @@ fn test_create_group() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, admin);
     assert_eq!(group.contribution_amount, 1_000_000);
+    assert_eq!(group.savings_goal, 0);
+    assert_eq!(group.goal_contributed, 0);
+    assert!(!group.goal_reached);
     assert_eq!(group.max_members, 5);
     assert_eq!(group.status, GroupStatus::Forming);
     assert_eq!(group.members.len(), 1);
@@ -149,6 +152,44 @@ fn test_full_cycle() {
     // Group should be completed
     let group = client.get_group(&group_id);
     assert_eq!(group.status, GroupStatus::Completed);
+}
+
+#[test]
+fn test_savings_goal_progress() {
+    let (env, admin, client, _token) = setup_env();
+    let member1 = Address::generate(&env);
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Goal Group"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.set_savings_goal(&admin, &group_id, &2_000_000);
+    assert_eq!(client.get_progress(&group_id), 0);
+
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&member1, &group_id);
+    assert_eq!(client.get_progress(&group_id), 50);
+    let group = client.get_group(&group_id);
+    assert_eq!(group.goal_contributed, 1_000_000);
+    assert!(!group.goal_reached);
+
+    client.contribute(&admin, &group_id);
+    assert_eq!(client.get_progress(&group_id), 100);
+    let group = client.get_group(&group_id);
+    assert_eq!(group.goal_contributed, 2_000_000);
+    assert!(group.goal_reached);
 }
 
 #[test]

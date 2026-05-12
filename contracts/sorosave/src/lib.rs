@@ -54,6 +54,26 @@ impl SoroSaveContract {
         group::join_group(&env, member, group_id)
     }
 
+    /// Enable invite-only joining for a forming group.
+    pub fn enable_invites(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        invite_code: u64,
+    ) -> Result<u64, ContractError> {
+        group::enable_invites(&env, admin, group_id, invite_code)
+    }
+
+    /// Join an invite-only group using its raw invite code.
+    pub fn join_group_with_invite(
+        env: Env,
+        member: Address,
+        group_id: u64,
+        invite_code: u64,
+    ) -> Result<(), ContractError> {
+        group::join_group_with_invite(&env, member, group_id, invite_code)
+    }
+
     /// Leave a group (only allowed while group is still forming).
     pub fn leave_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
         group::leave_group(&env, member, group_id)

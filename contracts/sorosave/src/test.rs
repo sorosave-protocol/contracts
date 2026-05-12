@@ -48,6 +48,8 @@ fn test_create_group() {
     assert_eq!(group.admin, admin);
     assert_eq!(group.contribution_amount, 1_000_000);
     assert_eq!(group.max_members, 5);
+    assert!(!group.invite_required);
+    assert_eq!(group.invite_code_hash, 0);
     assert_eq!(group.status, GroupStatus::Forming);
     assert_eq!(group.members.len(), 1);
 }
@@ -221,4 +223,26 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_invite_required_group_join() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    let member1 = Address::generate(&env);
+    let invite_hash = client.enable_invites(&admin, &group_id, &123_456);
+
+    let group = client.get_group(&group_id);
+    assert!(group.invite_required);
+    assert_eq!(group.invite_code_hash, invite_hash);
+
+    let wrong_code_result = client.try_join_group_with_invite(&member1, &group_id, &999_999);
+    assert!(wrong_code_result.is_err());
+
+    client.join_group_with_invite(&member1, &group_id, &123_456);
+    assert_eq!(client.get_group(&group_id).members.len(), 2);
+
+    let member2 = Address::generate(&env);
+    let direct_join_result = client.try_join_group(&member2, &group_id);
+    assert!(direct_join_result.is_err());
 }

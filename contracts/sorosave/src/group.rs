@@ -36,6 +36,8 @@ pub fn create_group(
         contribution_amount,
         cycle_length,
         max_members,
+        invite_required: false,
+        invite_code_hash: 0,
         members,
         payout_order: Vec::new(env),
         current_round: 0,
@@ -58,6 +60,64 @@ pub fn join_group(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
 
     let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
 
+    if group.invite_required {
+        return Err(ContractError::InvalidInvite);
+    }
+
+    join_group_inner(env, member, &mut group)
+}
+
+pub fn join_group_with_invite(
+    env: &Env,
+    member: Address,
+    group_id: u64,
+    invite_code: u64,
+) -> Result<(), ContractError> {
+    member.require_auth();
+
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if !group.invite_required || hash_invite_code(invite_code) != group.invite_code_hash {
+        return Err(ContractError::InvalidInvite);
+    }
+
+    join_group_inner(env, member, &mut group)
+}
+
+pub fn enable_invites(
+    env: &Env,
+    admin: Address,
+    group_id: u64,
+    invite_code: u64,
+) -> Result<u64, ContractError> {
+    admin.require_auth();
+
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    if admin != group.admin {
+        return Err(ContractError::Unauthorized);
+    }
+    if group.status != GroupStatus::Forming {
+        return Err(ContractError::GroupNotForming);
+    }
+
+    let invite_code_hash = hash_invite_code(invite_code);
+    group.invite_required = true;
+    group.invite_code_hash = invite_code_hash;
+    storage::set_group(env, &group);
+
+    env.events().publish(
+        (crate::symbol_short!("invite"),),
+        (group_id, invite_code_hash),
+    );
+
+    Ok(invite_code_hash)
+}
+
+fn join_group_inner(
+    env: &Env,
+    member: Address,
+    group: &mut SavingsGroup,
+) -> Result<(), ContractError> {
     if group.status != GroupStatus::Forming {
         return Err(ContractError::GroupNotForming);
     }
@@ -74,13 +134,20 @@ pub fn join_group(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     }
 
     group.members.push_back(member.clone());
-    storage::set_group(env, &group);
-    storage::add_member_group(env, &member, group_id);
+    storage::set_group(env, group);
+    storage::add_member_group(env, &member, group.id);
 
     env.events()
-        .publish((crate::symbol_short!("grp_join"),), (group_id, member));
+        .publish((crate::symbol_short!("grp_join"),), (group.id, member));
 
     Ok(())
+}
+
+fn hash_invite_code(invite_code: u64) -> u64 {
+    invite_code
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        .rotate_left(17)
+        ^ 0xBF58_476D_1CE4_E5B9
 }
 
 pub fn leave_group(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {

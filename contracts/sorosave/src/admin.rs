@@ -1,15 +1,33 @@
-use soroban_sdk::{Address, Env, String};
+use soroban_sdk::{Address, Env, Map, String};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{Dispute, GroupStatus};
+use crate::types::{Dispute, GroupStatus, SavingsGroup};
+
+fn is_group_admin(env: &Env, admin: &Address, group: &SavingsGroup) -> bool {
+    admin == &group.admin || admin == &storage::get_admin(env)
+}
+
+fn is_group_member(group: &SavingsGroup, member: &Address) -> bool {
+    for m in group.members.iter() {
+        if &m == member {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn has_reached_quorum(votes: u32, member_count: u32, quorum_percent: u32) -> bool {
+    u64::from(votes) * 100 > u64::from(member_count) * u64::from(quorum_percent)
+}
 
 pub fn pause_group(env: &Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
     admin.require_auth();
 
     let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
 
-    if admin != group.admin && admin != storage::get_admin(env) {
+    if !is_group_admin(env, &admin, &group) {
         return Err(ContractError::Unauthorized);
     }
 
@@ -31,7 +49,7 @@ pub fn resume_group(env: &Env, admin: Address, group_id: u64) -> Result<(), Cont
 
     let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
 
-    if admin != group.admin && admin != storage::get_admin(env) {
+    if !is_group_admin(env, &admin, &group) {
         return Err(ContractError::Unauthorized);
     }
 
@@ -58,15 +76,7 @@ pub fn raise_dispute(
 
     let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
 
-    // Verify membership
-    let mut is_member = false;
-    for m in group.members.iter() {
-        if m == member {
-            is_member = true;
-            break;
-        }
-    }
-    if !is_member {
+    if !is_group_member(&group, &member) {
         return Err(ContractError::NotMember);
     }
 
@@ -78,6 +88,9 @@ pub fn raise_dispute(
         raised_by: member.clone(),
         reason,
         raised_at: env.ledger().timestamp(),
+        approve_votes: 0,
+        reject_votes: 0,
+        voters: Map::new(env),
     };
 
     group.status = GroupStatus::Disputed;
@@ -95,7 +108,7 @@ pub fn resolve_dispute(env: &Env, admin: Address, group_id: u64) -> Result<(), C
 
     let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
 
-    if admin != group.admin && admin != storage::get_admin(env) {
+    if !is_group_admin(env, &admin, &group) {
         return Err(ContractError::Unauthorized);
     }
 
@@ -109,6 +122,93 @@ pub fn resolve_dispute(env: &Env, admin: Address, group_id: u64) -> Result<(), C
 
     env.events()
         .publish((crate::symbol_short!("resolved"),), group_id);
+
+    Ok(())
+}
+
+pub fn vote_on_dispute(
+    env: &Env,
+    member: Address,
+    group_id: u64,
+    approve: bool,
+) -> Result<(), ContractError> {
+    member.require_auth();
+
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if group.status != GroupStatus::Disputed {
+        return Err(ContractError::GroupNotActive);
+    }
+
+    if !is_group_member(&group, &member) {
+        return Err(ContractError::NotMember);
+    }
+
+    let mut dispute = storage::get_dispute(env, group_id).ok_or(ContractError::GroupNotActive)?;
+
+    if dispute.voters.contains_key(member.clone()) {
+        return Err(ContractError::AlreadyVoted);
+    }
+
+    dispute.voters.set(member.clone(), approve);
+    if approve {
+        dispute.approve_votes += 1;
+    } else {
+        dispute.reject_votes += 1;
+    }
+
+    env.events().publish(
+        (crate::symbol_short!("disp_vot"),),
+        (group_id, member, approve),
+    );
+
+    if has_reached_quorum(
+        dispute.approve_votes,
+        group.members.len(),
+        group.dispute_quorum_percent,
+    ) {
+        group.status = GroupStatus::Active;
+        storage::set_group(env, &group);
+        storage::remove_dispute(env, group_id);
+
+        env.events()
+            .publish((crate::symbol_short!("resolved"),), group_id);
+    } else {
+        storage::set_dispute(env, group_id, &dispute);
+    }
+
+    Ok(())
+}
+
+pub fn set_dispute_quorum(
+    env: &Env,
+    admin: Address,
+    group_id: u64,
+    quorum_percent: u32,
+) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    if quorum_percent == 0 || quorum_percent >= 100 {
+        return Err(ContractError::InvalidQuorum);
+    }
+
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if !is_group_admin(env, &admin, &group) {
+        return Err(ContractError::Unauthorized);
+    }
+
+    if group.status == GroupStatus::Completed {
+        return Err(ContractError::GroupCompleted);
+    }
+
+    group.dispute_quorum_percent = quorum_percent;
+    storage::set_group(env, &group);
+
+    env.events().publish(
+        (crate::symbol_short!("disp_qrm"),),
+        (group_id, quorum_percent),
+    );
 
     Ok(())
 }

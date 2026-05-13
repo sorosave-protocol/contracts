@@ -212,6 +212,78 @@ fn test_dispute_flow() {
 }
 
 #[test]
+fn test_dispute_member_votes_auto_resolve() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.raise_dispute(
+        &member1,
+        &group_id,
+        &String::from_str(&env, "Need member review"),
+    );
+
+    client.vote_on_dispute(&admin, &group_id, &true);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Disputed);
+
+    client.vote_on_dispute(&member2, &group_id, &true);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+}
+
+#[test]
+fn test_dispute_quorum_is_configurable() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.set_dispute_quorum(&admin, &group_id, &67);
+    client.start_group(&admin, &group_id);
+
+    client.raise_dispute(
+        &member1,
+        &group_id,
+        &String::from_str(&env, "Require supermajority"),
+    );
+
+    client.vote_on_dispute(&admin, &group_id, &true);
+    client.vote_on_dispute(&member2, &group_id, &true);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Disputed);
+
+    client.vote_on_dispute(&member1, &group_id, &true);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+}
+
+#[test]
+fn test_reject_votes_do_not_resolve_dispute() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.raise_dispute(
+        &member1,
+        &group_id,
+        &String::from_str(&env, "Review rejected path"),
+    );
+
+    client.vote_on_dispute(&admin, &group_id, &false);
+    client.vote_on_dispute(&member2, &group_id, &true);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Disputed);
+}
+
+#[test]
 fn test_set_group_admin() {
     let (env, admin, client, token) = setup_env();
     let group_id = create_test_group(&env, &client, &admin, &token);

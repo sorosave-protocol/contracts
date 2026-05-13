@@ -108,7 +108,11 @@ pub fn remove_member_group(env: &Env, member: &Address, group_id: u64) {
 #[allow(dead_code)]
 pub fn get_dispute(env: &Env, group_id: u64) -> Option<Dispute> {
     let key = DataKey::Dispute(group_id);
-    env.storage().persistent().get(&key)
+    let result = env.storage().persistent().get(&key);
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+    result
 }
 
 pub fn set_dispute(env: &Env, group_id: u64, dispute: &Dispute) {

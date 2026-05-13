@@ -41,6 +41,7 @@ pub fn create_group(
         current_round: 0,
         total_rounds: 0,
         status: GroupStatus::Forming,
+        dispute_quorum_percent: 50,
         created_at: env.ledger().timestamp(),
     };
 

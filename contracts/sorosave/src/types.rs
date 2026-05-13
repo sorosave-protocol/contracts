@@ -27,6 +27,7 @@ pub struct SavingsGroup {
     pub current_round: u32,
     pub total_rounds: u32,
     pub status: GroupStatus,
+    pub dispute_quorum_percent: u32,
     pub created_at: u64,
 }
 
@@ -49,6 +50,9 @@ pub struct Dispute {
     pub raised_by: Address,
     pub reason: String,
     pub raised_at: u64,
+    pub approve_votes: u32,
+    pub reject_votes: u32,
+    pub voters: Map<Address, bool>,
 }
 
 /// Storage keys for all contract data.

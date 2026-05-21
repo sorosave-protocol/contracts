@@ -1,7 +1,11 @@
+extern crate std;
+
 use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
 
 use crate::types::GroupStatus;
 use crate::{SoroSaveContract, SoroSaveContractClient};
+
+use proptest::prelude::*;
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
     let env = Env::default();
@@ -221,4 +225,113 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+fn assert_address_appears_once(addresses: &[Address], target: &Address) {
+    let count = addresses.iter().filter(|address| *address == target).count();
+    assert_eq!(count, 1);
+}
+
+fn assert_soroban_address_appears_once(
+    addresses: &soroban_sdk::Vec<Address>,
+    target: &Address,
+) {
+    let mut count = 0;
+    for address in addresses.iter() {
+        if address == target.clone() {
+            count += 1;
+        }
+    }
+    assert_eq!(count, 1);
+}
+
+fn run_contribution_property_case(member_count: u32, contribution_amount: i128) {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let contract_id = env.register(SoroSaveContract, (&admin,));
+    let client = SoroSaveContractClient::new(&env, &contract_id);
+
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token = token_id.address();
+    let token_client = StellarAssetClient::new(&env, &token);
+
+    let starting_balance = contribution_amount * i128::from(member_count + 1);
+    token_client.mint(&admin, &starting_balance);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Property Contribution Test"),
+        &token,
+        &contribution_amount,
+        &86400,
+        &member_count,
+    );
+
+    let mut members = std::vec![admin.clone()];
+    for _ in 1..member_count {
+        let member = Address::generate(&env);
+        token_client.mint(&member, &starting_balance);
+        client.join_group(&member, &group_id);
+        members.push(member);
+    }
+
+    let initial_balances = members
+        .iter()
+        .map(|member| token_client.balance(member))
+        .collect::<std::vec::Vec<_>>();
+
+    client.start_group(&admin, &group_id);
+
+    let payout_order = client.get_payout_order(&group_id);
+    assert_eq!(payout_order.len(), member_count);
+    for member in &members {
+        assert_soroban_address_appears_once(&payout_order, member);
+    }
+
+    for round_number in 1..=member_count {
+        let recipient = client.get_current_recipient(&group_id);
+        assert_address_appears_once(&members, &recipient);
+
+        for member in &members {
+            client.contribute(member, &group_id);
+            assert!(client.has_contributed(member, &group_id, &round_number));
+        }
+
+        let round = client.get_round_status(&group_id, &round_number);
+        assert!(round.is_complete);
+        assert_eq!(
+            round.total_contributed,
+            contribution_amount * i128::from(member_count)
+        );
+
+        client.distribute_payout(&group_id);
+    }
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Completed);
+    assert_eq!(group.current_round, member_count);
+    assert_eq!(group.total_rounds, member_count);
+
+    for (member, initial_balance) in members.iter().zip(initial_balances.iter()) {
+        assert_eq!(token_client.balance(member), *initial_balance);
+    }
+    assert_eq!(token_client.balance(&contract_id), 0);
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 24,
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn property_contribution_rounds_preserve_payout_invariants(
+        member_count in 2u32..=20,
+        contribution_amount in 1i128..=5_000_000i128,
+    ) {
+        run_contribution_property_case(member_count, contribution_amount);
+    }
 }

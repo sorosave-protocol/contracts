@@ -152,6 +152,63 @@ fn test_full_cycle() {
 }
 
 #[test]
+fn test_delegate_can_contribute_for_group_member() {
+    let (env, admin, client, _token) = setup_env();
+
+    let member1 = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    let replacement_delegate = Address::generate(&env);
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&delegate, &10_000_000);
+    token_sac.mint(&replacement_delegate, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Delegated Contribution"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+
+    client.set_delegate(&member1, &delegate, &group_id);
+    assert_eq!(
+        env.as_contract(&client.address, || crate::storage::get_delegate(
+            &env, group_id, &member1
+        )),
+        Some(delegate.clone())
+    );
+
+    client.set_delegate(&member1, &replacement_delegate, &group_id);
+    assert_eq!(
+        env.as_contract(&client.address, || crate::storage::get_delegate(
+            &env, group_id, &member1
+        )),
+        Some(replacement_delegate.clone())
+    );
+
+    client.start_group(&admin, &group_id);
+    client.contribute(&admin, &group_id);
+    client.contribute_for(&replacement_delegate, &member1, &group_id);
+
+    assert!(client.has_contributed(&member1, &group_id, &1));
+    assert!(client.get_round_status(&group_id, &1).is_complete);
+
+    client.revoke_delegate(&member1, &group_id);
+    assert_eq!(
+        env.as_contract(&client.address, || crate::storage::get_delegate(
+            &env, group_id, &member1
+        )),
+        None
+    );
+}
+
+#[test]
 fn test_member_groups() {
     let (env, admin, client, token) = setup_env();
 

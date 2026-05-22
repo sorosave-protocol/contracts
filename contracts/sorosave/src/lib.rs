@@ -81,6 +81,31 @@ impl SoroSaveContract {
         contribution::contribute(&env, member, group_id)
     }
 
+    /// Authorize a delegate to contribute on behalf of a member in a group.
+    pub fn set_delegate(
+        env: Env,
+        member: Address,
+        delegate: Address,
+        group_id: u64,
+    ) -> Result<(), ContractError> {
+        contribution::set_delegate(&env, member, delegate, group_id)
+    }
+
+    /// Revoke an active contribution delegate for a member in a group.
+    pub fn revoke_delegate(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
+        contribution::revoke_delegate(&env, member, group_id)
+    }
+
+    /// Let an authorized delegate contribute on behalf of a group member.
+    pub fn contribute_for(
+        env: Env,
+        delegate: Address,
+        member: Address,
+        group_id: u64,
+    ) -> Result<(), ContractError> {
+        contribution::contribute_for(&env, delegate, member, group_id)
+    }
+
     /// Get the status of a specific round.
     pub fn get_round_status(
         env: Env,

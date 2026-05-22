@@ -50,6 +50,7 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
             round_number: group.current_round,
             recipient: next_recipient,
             contributions: Map::new(env),
+            contribution_amounts: Map::new(env),
             total_contributed: 0,
             is_complete: false,
             deadline: env.ledger().timestamp() + group.cycle_length,

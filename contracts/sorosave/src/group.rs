@@ -150,6 +150,7 @@ pub fn start_group(env: &Env, admin: Address, group_id: u64) -> Result<(), Contr
         round_number: 1,
         recipient: first_recipient,
         contributions: Map::new(env),
+        contribution_amounts: Map::new(env),
         total_contributed: 0,
         is_complete: false,
         deadline: env.ledger().timestamp() + group.cycle_length,

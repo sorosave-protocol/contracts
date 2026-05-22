@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env, String};
+use soroban_sdk::{Address, Env, Map, String};
 
 use crate::errors::ContractError;
 use crate::storage;
@@ -127,16 +127,66 @@ pub fn emergency_withdraw(env: &Env, admin: Address, group_id: u64) -> Result<()
         return Err(ContractError::GroupCompleted);
     }
 
-    // Calculate remaining balance and distribute equally
     let token_client = soroban_sdk::token::Client::new(env, &group.token);
     let contract_addr = env.current_contract_address();
     let balance = token_client.balance(&contract_addr);
 
     if balance > 0 {
-        let per_member = balance / group.members.len() as i128;
-        if per_member > 0 {
+        let mut contribution_amounts: Map<Address, i128> = Map::new(env);
+        let mut total_contributed = 0i128;
+
+        if group.current_round > 0 {
+            if let Some(round) = storage::get_round(env, group_id, group.current_round) {
+                for member in group.members.iter() {
+                    if round.contributions.contains_key(member.clone()) {
+                        contribution_amounts.set(member.clone(), group.contribution_amount);
+                        total_contributed += group.contribution_amount;
+                    }
+                }
+            }
+        }
+
+        if total_contributed > 0 {
+            let mut distributed = 0i128;
+            let mut remainder_recipient = group.admin.clone();
+            let mut largest_contribution = 0i128;
+
             for member in group.members.iter() {
-                token_client.transfer(&contract_addr, &member, &per_member);
+                let contributed = contribution_amounts.get(member.clone()).unwrap_or(0);
+                if contributed <= 0 {
+                    continue;
+                }
+
+                if contributed > largest_contribution {
+                    largest_contribution = contributed;
+                    remainder_recipient = member.clone();
+                }
+
+                let share = (balance * contributed) / total_contributed;
+                if share > 0 {
+                    token_client.transfer(&contract_addr, &member, &share);
+                    distributed += share;
+                }
+            }
+
+            let remainder = balance - distributed;
+            if remainder > 0 {
+                token_client.transfer(&contract_addr, &remainder_recipient, &remainder);
+            }
+        } else {
+            let per_member = balance / group.members.len() as i128;
+            let mut distributed = 0i128;
+
+            if per_member > 0 {
+                for member in group.members.iter() {
+                    token_client.transfer(&contract_addr, &member, &per_member);
+                    distributed += per_member;
+                }
+            }
+
+            let remainder = balance - distributed;
+            if remainder > 0 {
+                token_client.transfer(&contract_addr, &group.admin, &remainder);
             }
         }
     }

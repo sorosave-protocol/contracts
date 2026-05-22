@@ -1,4 +1,8 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env, String,
+};
 
 use crate::types::GroupStatus;
 use crate::{SoroSaveContract, SoroSaveContractClient};
@@ -221,4 +225,93 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_emergency_withdraw_mid_round_returns_actual_contributions() {
+    let (env, admin, client, _token) = setup_env();
+
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin);
+    let token = token_id.address();
+    let asset_client = StellarAssetClient::new(&env, &token);
+    let token_client = TokenClient::new(&env, &token);
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    let member4 = Address::generate(&env);
+
+    for member in [
+        admin.clone(),
+        member1.clone(),
+        member2.clone(),
+        member3.clone(),
+        member4.clone(),
+    ] {
+        asset_client.mint(&member, &20_000_000);
+    }
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Emergency Withdraw Unequal"),
+        &token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+    client.join_group(&member4, &group_id);
+    client.start_group(&admin, &group_id);
+
+    // Complete and pay out two full rounds so their funds are no longer in escrow.
+    for contributor in [
+        admin.clone(),
+        member1.clone(),
+        member2.clone(),
+        member3.clone(),
+        member4.clone(),
+    ] {
+        client.contribute(&contributor, &group_id);
+    }
+    client.distribute_payout(&group_id);
+
+    for contributor in [
+        admin.clone(),
+        member1.clone(),
+        member2.clone(),
+        member3.clone(),
+        member4.clone(),
+    ] {
+        client.contribute(&contributor, &group_id);
+    }
+    client.distribute_payout(&group_id);
+
+    // Trigger the emergency path mid-round 3 after only two members contributed.
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+
+    let contract_addr = client.address.clone();
+    let balance_before = token_client.balance(&contract_addr);
+    assert_eq!(balance_before, 2_000_000);
+
+    let admin_before = token_client.balance(&admin);
+    let member1_before = token_client.balance(&member1);
+    let member2_before = token_client.balance(&member2);
+    let member3_before = token_client.balance(&member3);
+    let member4_before = token_client.balance(&member4);
+
+    client.emergency_withdraw(&admin, &group_id);
+
+    assert_eq!(token_client.balance(&admin) - admin_before, 1_000_000);
+    assert_eq!(token_client.balance(&member1) - member1_before, 1_000_000);
+    assert_eq!(token_client.balance(&member2) - member2_before, 0);
+    assert_eq!(token_client.balance(&member3) - member3_before, 0);
+    assert_eq!(token_client.balance(&member4) - member4_before, 0);
+    assert_eq!(token_client.balance(&contract_addr), 0);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Completed);
 }

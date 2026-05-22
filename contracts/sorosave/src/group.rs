@@ -4,6 +4,83 @@ use crate::errors::ContractError;
 use crate::storage;
 use crate::types::{GroupStatus, RoundInfo, SavingsGroup};
 
+/// Clone a completed group's settings to start a new cycle.
+/// Copies token, contribution_amount, cycle_length, max_members from source.
+/// Optionally auto-invites previous members. New group starts in Forming status.
+pub fn clone_group(
+    env: &Env,
+    admin: Address,
+    source_group_id: u64,
+) -> Result<u64, ContractError> {
+    admin.require_auth();
+
+    // Fetch source group
+    let source = storage::get_group(env, source_group_id)
+        .ok_or(ContractError::GroupNotFound)?;
+
+    // Only admin of the source group can clone
+    if admin != source.admin {
+        return Err(ContractError::Unauthorized);
+    }
+
+    // Source group should be completed or at least active (allow cloning from active too)
+    if source.status != GroupStatus::Completed && source.status != GroupStatus::Active {
+        return Err(ContractError::InvalidGroupStatus);
+    }
+
+    // Generate new group ID
+    let group_id = storage::get_group_counter(env) + 1;
+    storage::set_group_counter(env, group_id);
+
+    // Clone name with a "(Clone)" suffix to distinguish
+    let clone_name = String::from_str(
+        env,
+        &format!("{} (Clone)", source.name.to_string()),
+    );
+
+    // Auto-invite previous members: start with admin only,
+    // then add other members from source group
+    let mut members = Vec::new(env);
+    members.push_back(admin.clone());
+    for m in source.members.iter() {
+        if m != admin {
+            members.push_back(m.clone());
+        }
+    }
+
+    let group = SavingsGroup {
+        id: group_id,
+        name: clone_name,
+        admin: admin.clone(),
+        token: source.token.clone(),
+        contribution_amount: source.contribution_amount,
+        cycle_length: source.cycle_length,
+        max_members: source.max_members,
+        members,
+        payout_order: Vec::new(env),
+        current_round: 0,
+        total_rounds: 0,
+        status: GroupStatus::Forming,
+        created_at: env.ledger().timestamp(),
+    };
+
+    storage::set_group(env, &group);
+
+    // Register all members to the new group
+    for m in source.members.iter() {
+        storage::add_member_group(env, &m, group_id);
+    }
+
+    // Store source group reference in metadata
+    storage::set_clone_source(env, group_id, source_group_id);
+
+    env.events()
+        .publish((crate::symbol_short!("grp_clone"),), (source_group_id, group_id));
+
+    Ok(group_id)
+}
+
+
 pub fn create_group(
     env: &Env,
     admin: Address,

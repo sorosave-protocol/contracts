@@ -53,6 +53,7 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
             total_contributed: 0,
             is_complete: false,
             deadline: env.ledger().timestamp() + group.cycle_length,
+            deadline_extensions: 0,
         };
 
         storage::set_round(env, group_id, &new_round);

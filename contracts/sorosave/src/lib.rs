@@ -130,6 +130,16 @@ impl SoroSaveContract {
         admin::resume_group(&env, admin, group_id)
     }
 
+    /// Extend the current round deadline. A round can be extended at most twice.
+    pub fn extend_deadline(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        extra_seconds: u64,
+    ) -> Result<(), ContractError> {
+        admin::extend_deadline(&env, admin, group_id, extra_seconds)
+    }
+
     /// Raise a dispute on a group.
     pub fn raise_dispute(
         env: Env,

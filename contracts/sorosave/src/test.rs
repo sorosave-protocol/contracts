@@ -190,6 +190,36 @@ fn test_pause_resume_group() {
 }
 
 #[test]
+fn test_extend_deadline_limits() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    let original_deadline = client.get_round_status(&group_id, &1).deadline;
+
+    client.extend_deadline(&admin, &group_id, &3600);
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.deadline, original_deadline + 3600);
+    assert_eq!(round.deadline_extensions, 1);
+
+    client.extend_deadline(&admin, &group_id, &7200);
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.deadline, original_deadline + 10800);
+    assert_eq!(round.deadline_extensions, 2);
+
+    assert!(client.try_extend_deadline(&admin, &group_id, &1).is_err());
+    assert!(client
+        .try_extend_deadline(&member1, &group_id, &3600)
+        .is_err());
+    assert!(client
+        .try_extend_deadline(&admin, &group_id, &86401)
+        .is_err());
+}
+
+#[test]
 fn test_dispute_flow() {
     let (env, admin, client, token) = setup_env();
     let group_id = create_test_group(&env, &client, &admin, &token);

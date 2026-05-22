@@ -122,6 +122,21 @@ pub fn remove_dispute(env: &Env, group_id: u64) {
     env.storage().persistent().remove(&key);
 }
 
+// --- Clone Source ---
+
+/// Store the source group ID for a cloned group.
+pub fn set_clone_source(env: &Env, new_group_id: u64, source_group_id: u64) {
+    let key = DataKey::CloneSource(new_group_id);
+    env.storage().persistent().set(&key, source_group_id);
+    extend_persistent_ttl(env, &key);
+}
+
+/// Get the source group ID for a cloned group.
+pub fn get_clone_source(env: &Env, group_id: u64) -> Option<u64> {
+    let key = DataKey::CloneSource(group_id);
+    env.storage().persistent().get(&key)
+}
+
 // --- TTL Management ---
 
 fn extend_instance_ttl(env: &Env) {

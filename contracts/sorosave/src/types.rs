@@ -61,4 +61,6 @@ pub enum DataKey {
     Round(u64, u32),
     MemberGroups(Address),
     Dispute(u64),
+    /// Tracks the source group ID for cloned groups.
+    CloneSource(u64),
 }

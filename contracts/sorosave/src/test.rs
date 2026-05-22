@@ -212,6 +212,63 @@ fn test_dispute_flow() {
 }
 
 #[test]
+fn test_dispute_preserves_pending_round_contributions() {
+    let (env, admin, client, _token) = setup_env();
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+    token_sac.mint(&member2, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Pending Dispute Test"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+
+    let round_before_dispute = client.get_round_status(&group_id, &1);
+    assert_eq!(round_before_dispute.total_contributed, 2_000_000);
+    assert!(!round_before_dispute.is_complete);
+
+    client.raise_dispute(
+        &member2,
+        &group_id,
+        &String::from_str(&env, "Need contribution review"),
+    );
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Disputed);
+
+    let round_during_dispute = client.get_round_status(&group_id, &1);
+    assert_eq!(
+        round_during_dispute.total_contributed,
+        round_before_dispute.total_contributed
+    );
+    assert!(client.has_contributed(&admin, &group_id, &1));
+    assert!(client.has_contributed(&member1, &group_id, &1));
+    assert!(!client.has_contributed(&member2, &group_id, &1));
+
+    client.resolve_dispute(&admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+
+    client.contribute(&member2, &group_id);
+    let completed_round = client.get_round_status(&group_id, &1);
+    assert_eq!(completed_round.total_contributed, 3_000_000);
+    assert!(completed_round.is_complete);
+}
+
+#[test]
 fn test_set_group_admin() {
     let (env, admin, client, token) = setup_env();
     let group_id = create_test_group(&env, &client, &admin, &token);

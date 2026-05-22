@@ -59,6 +59,15 @@ impl SoroSaveContract {
         group::leave_group(&env, member, group_id)
     }
 
+    /// Clone a completed group's settings and members into a new forming group.
+    pub fn clone_group(
+        env: Env,
+        admin: Address,
+        source_group_id: u64,
+    ) -> Result<u64, ContractError> {
+        group::clone_group(&env, admin, source_group_id)
+    }
+
     /// Start the group rounds. Only the group admin can call this.
     pub fn start_group(env: Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
         group::start_group(&env, admin, group_id)

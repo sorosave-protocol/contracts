@@ -152,6 +152,69 @@ fn test_full_cycle() {
 }
 
 #[test]
+fn test_clone_completed_group_reuses_settings_and_members() {
+    let (env, admin, client, _token) = setup_env();
+
+    let member1 = Address::generate(&env);
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let source_group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Recurring Group"),
+        &token_id.address(),
+        &750_000,
+        &43200,
+        &4,
+    );
+    client.join_group(&member1, &source_group_id);
+    client.start_group(&admin, &source_group_id);
+
+    client.contribute(&admin, &source_group_id);
+    client.contribute(&member1, &source_group_id);
+    client.distribute_payout(&source_group_id);
+
+    client.contribute(&admin, &source_group_id);
+    client.contribute(&member1, &source_group_id);
+    client.distribute_payout(&source_group_id);
+    assert_eq!(
+        client.get_group(&source_group_id).status,
+        GroupStatus::Completed
+    );
+
+    let cloned_group_id = client.clone_group(&admin, &source_group_id);
+    let cloned_group = client.get_group(&cloned_group_id);
+
+    assert_eq!(cloned_group.source_group_id, source_group_id);
+    assert_eq!(cloned_group.token, token_id.address());
+    assert_eq!(cloned_group.contribution_amount, 750_000);
+    assert_eq!(cloned_group.cycle_length, 43200);
+    assert_eq!(cloned_group.max_members, 4);
+    assert_eq!(cloned_group.status, GroupStatus::Forming);
+    assert_eq!(cloned_group.current_round, 0);
+    assert_eq!(cloned_group.members.len(), 2);
+    assert_eq!(cloned_group.members.get(0).unwrap(), admin);
+    assert_eq!(cloned_group.members.get(1).unwrap(), member1);
+
+    assert_eq!(
+        client.get_member_groups(&admin).get(1).unwrap(),
+        cloned_group_id
+    );
+    assert_eq!(
+        client.get_member_groups(&member1).get(1).unwrap(),
+        cloned_group_id
+    );
+
+    client.start_group(&admin, &cloned_group_id);
+    let started_clone = client.get_group(&cloned_group_id);
+    assert_eq!(started_clone.status, GroupStatus::Active);
+    assert_eq!(started_clone.total_rounds, 2);
+}
+
+#[test]
 fn test_member_groups() {
     let (env, admin, client, token) = setup_env();
 

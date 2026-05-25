@@ -4,6 +4,44 @@ use crate::errors::ContractError;
 use crate::storage;
 use crate::types::{Dispute, GroupStatus};
 
+pub fn set_protocol_fee_bps(env: &Env, admin: Address, bps: u32) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    if admin != storage::get_admin(env) {
+        return Err(ContractError::Unauthorized);
+    }
+
+    if bps > storage::MAX_PROTOCOL_FEE_BPS {
+        return Err(ContractError::InvalidAmount);
+    }
+
+    storage::set_protocol_fee_bps(env, bps);
+
+    env.events()
+        .publish((crate::symbol_short!("fee_set"),), bps);
+
+    Ok(())
+}
+
+pub fn set_protocol_treasury(
+    env: &Env,
+    admin: Address,
+    treasury: Address,
+) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    if admin != storage::get_admin(env) {
+        return Err(ContractError::Unauthorized);
+    }
+
+    storage::set_protocol_treasury(env, &treasury);
+
+    env.events()
+        .publish((crate::symbol_short!("treasury"),), treasury);
+
+    Ok(())
+}
+
 pub fn pause_group(env: &Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
     admin.require_auth();
 

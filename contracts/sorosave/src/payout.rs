@@ -18,21 +18,33 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
         return Err(ContractError::RoundNotComplete);
     }
 
-    // Transfer the pot to the round's recipient
+    // Split the completed pot into protocol fee and recipient payout.
     let token_client = soroban_sdk::token::Client::new(env, &group.token);
-    token_client.transfer(
-        &env.current_contract_address(),
-        &round_info.recipient,
-        &round_info.total_contributed,
-    );
+    let contract_addr = env.current_contract_address();
+    let fee_bps = storage::get_protocol_fee_bps(env);
+    let fee_denominator = storage::MAX_PROTOCOL_FEE_BPS as i128;
+    let fee_bps_i128 = fee_bps as i128;
+    let fee_amount = (round_info.total_contributed / fee_denominator) * fee_bps_i128
+        + (round_info.total_contributed % fee_denominator) * fee_bps_i128 / fee_denominator;
+    let payout_amount = round_info.total_contributed - fee_amount;
+
+    if fee_amount > 0 {
+        let treasury = storage::get_protocol_treasury(env);
+        token_client.transfer(&contract_addr, &treasury, &fee_amount);
+
+        env.events().publish(
+            (crate::symbol_short!("fee_paid"),),
+            (group_id, treasury, fee_amount),
+        );
+    }
+
+    if payout_amount > 0 {
+        token_client.transfer(&contract_addr, &round_info.recipient, &payout_amount);
+    }
 
     env.events().publish(
         (crate::symbol_short!("payout"),),
-        (
-            group_id,
-            round_info.recipient.clone(),
-            round_info.total_contributed,
-        ),
+        (group_id, round_info.recipient.clone(), payout_amount),
     );
 
     // Advance to next round or complete the group

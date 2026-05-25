@@ -1,7 +1,11 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env, String,
+};
 
 use crate::types::GroupStatus;
-use crate::{SoroSaveContract, SoroSaveContractClient};
+use crate::{ContractError, SoroSaveContract, SoroSaveContractClient};
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
     let env = Env::default();
@@ -221,4 +225,78 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_protocol_fee_defaults_and_admin_updates() {
+    let (env, admin, client, _) = setup_env();
+    let member = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    assert_eq!(client.get_protocol_fee_bps(), 0);
+    assert_eq!(client.get_protocol_treasury(), admin);
+
+    assert_eq!(
+        client.try_set_protocol_fee_bps(&member, &50),
+        Err(Ok(ContractError::Unauthorized))
+    );
+    assert_eq!(
+        client.try_set_protocol_treasury(&member, &treasury),
+        Err(Ok(ContractError::Unauthorized))
+    );
+    assert_eq!(
+        client.try_set_protocol_fee_bps(&admin, &10_001),
+        Err(Ok(ContractError::InvalidAmount))
+    );
+
+    client.set_protocol_fee_bps(&admin, &50);
+    client.set_protocol_treasury(&admin, &treasury);
+
+    assert_eq!(client.get_protocol_fee_bps(), 50);
+    assert_eq!(client.get_protocol_treasury(), treasury);
+}
+
+#[test]
+fn test_protocol_fee_deducted_from_payout() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let member = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let contract_id = env.register(SoroSaveContract, (&admin,));
+    let client = SoroSaveContractClient::new(&env, &contract_id);
+
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member, &10_000_000);
+
+    client.set_protocol_fee_bps(&admin, &50);
+    client.set_protocol_treasury(&admin, &treasury);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Protocol Fee Test"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member, &group_id);
+    client.distribute_payout(&group_id);
+
+    let token_client = TokenClient::new(&env, &token_id.address());
+    assert_eq!(token_client.balance(&treasury), 10_000);
+    assert_eq!(token_client.balance(&admin), 10_990_000);
+    assert_eq!(token_client.balance(&member), 9_000_000);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.current_round, 2);
 }

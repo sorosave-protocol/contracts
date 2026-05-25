@@ -163,6 +163,30 @@ impl SoroSaveContract {
     ) -> Result<(), ContractError> {
         admin::set_group_admin(&env, current_admin, group_id, new_admin)
     }
+
+    /// Get the protocol fee charged on payouts, in basis points.
+    pub fn get_protocol_fee_bps(env: Env) -> u32 {
+        storage::get_protocol_fee_bps(&env)
+    }
+
+    /// Set the protocol fee charged on payouts, in basis points.
+    pub fn set_protocol_fee_bps(env: Env, admin: Address, bps: u32) -> Result<(), ContractError> {
+        admin::set_protocol_fee_bps(&env, admin, bps)
+    }
+
+    /// Get the protocol treasury address that receives payout fees.
+    pub fn get_protocol_treasury(env: Env) -> Address {
+        storage::get_protocol_treasury(&env)
+    }
+
+    /// Set the protocol treasury address that receives payout fees.
+    pub fn set_protocol_treasury(
+        env: Env,
+        admin: Address,
+        treasury: Address,
+    ) -> Result<(), ContractError> {
+        admin::set_protocol_treasury(&env, admin, treasury)
+    }
 }
 
 #[cfg(test)]

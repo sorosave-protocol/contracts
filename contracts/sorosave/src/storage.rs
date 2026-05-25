@@ -6,6 +6,7 @@ const INSTANCE_TTL_THRESHOLD: u32 = 100;
 const INSTANCE_TTL_EXTEND: u32 = 500;
 const PERSISTENT_TTL_THRESHOLD: u32 = 100;
 const PERSISTENT_TTL_EXTEND: u32 = 1000;
+pub const MAX_PROTOCOL_FEE_BPS: u32 = 10_000;
 
 // --- Admin ---
 
@@ -20,6 +21,34 @@ pub fn set_admin(env: &Env, admin: &Address) {
 
 pub fn has_admin(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Admin)
+}
+
+// --- Protocol Config ---
+
+pub fn get_protocol_fee_bps(env: &Env) -> u32 {
+    env.storage()
+        .instance()
+        .get(&DataKey::ProtocolFeeBps)
+        .unwrap_or(0)
+}
+
+pub fn set_protocol_fee_bps(env: &Env, bps: u32) {
+    env.storage().instance().set(&DataKey::ProtocolFeeBps, &bps);
+    extend_instance_ttl(env);
+}
+
+pub fn get_protocol_treasury(env: &Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::ProtocolTreasury)
+        .unwrap_or_else(|| get_admin(env))
+}
+
+pub fn set_protocol_treasury(env: &Env, treasury: &Address) {
+    env.storage()
+        .instance()
+        .set(&DataKey::ProtocolTreasury, treasury);
+    extend_instance_ttl(env);
 }
 
 // --- Group Counter ---

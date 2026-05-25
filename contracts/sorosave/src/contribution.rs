@@ -2,7 +2,7 @@ use soroban_sdk::{Address, Env};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{GroupStatus, RoundInfo};
+use crate::types::{ContributionType, GroupStatus, RoundInfo, SavingsGroup};
 
 pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
     member.require_auth();
@@ -37,17 +37,19 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
         return Err(ContractError::AlreadyContributed);
     }
 
+    let contribution_amount = contribution_amount_for_member(&group, &member)?;
+
     // Transfer tokens from member to this contract
     let token_client = soroban_sdk::token::Client::new(env, &group.token);
     token_client.transfer(
         &member,
         &env.current_contract_address(),
-        &group.contribution_amount,
+        &contribution_amount,
     );
 
     // Record contribution
     round_info.contributions.set(member.clone(), true);
-    round_info.total_contributed += group.contribution_amount;
+    round_info.total_contributed += contribution_amount;
 
     // Check if all members have contributed
     if round_info.contributions.len() == group.members.len() {
@@ -58,10 +60,35 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
 
     env.events().publish(
         (crate::symbol_short!("contrib"),),
-        (group_id, member, group.contribution_amount),
+        (group_id, member, contribution_amount),
     );
 
     Ok(())
+}
+
+fn contribution_amount_for_member(
+    group: &SavingsGroup,
+    member: &Address,
+) -> Result<i128, ContractError> {
+    match &group.contribution_type {
+        ContributionType::Fixed => Ok(group.contribution_amount),
+        ContributionType::Percentage => {
+            let base_amount = group
+                .member_base_amounts
+                .get(member.clone())
+                .ok_or(ContractError::InvalidAmount)?;
+            let contribution_amount = base_amount
+                .checked_mul(group.contribution_amount)
+                .ok_or(ContractError::InvalidAmount)?
+                / 10_000;
+
+            if contribution_amount <= 0 {
+                return Err(ContractError::InvalidAmount);
+            }
+
+            Ok(contribution_amount)
+        }
+    }
 }
 
 pub fn get_round_status(env: &Env, group_id: u64, round: u32) -> Result<RoundInfo, ContractError> {

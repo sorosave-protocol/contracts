@@ -49,9 +49,41 @@ impl SoroSaveContract {
         )
     }
 
+    /// Create a percentage-based savings group. The contribution rate is in
+    /// basis points of each member's declared base amount.
+    pub fn create_percentage_group(
+        env: Env,
+        admin: Address,
+        name: String,
+        token: Address,
+        contribution_rate_bps: i128,
+        cycle_length: u64,
+        max_members: u32,
+    ) -> Result<u64, ContractError> {
+        group::create_percentage_group(
+            &env,
+            admin,
+            name,
+            token,
+            contribution_rate_bps,
+            cycle_length,
+            max_members,
+        )
+    }
+
     /// Join an existing group that is still forming.
     pub fn join_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
         group::join_group(&env, member, group_id)
+    }
+
+    /// Declare the base amount used by percentage-based groups.
+    pub fn set_member_base_amount(
+        env: Env,
+        member: Address,
+        group_id: u64,
+        base_amount: i128,
+    ) -> Result<(), ContractError> {
+        group::set_member_base_amount(&env, member, group_id, base_amount)
     }
 
     /// Leave a group (only allowed while group is still forming).

@@ -1,6 +1,6 @@
 use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
 
-use crate::types::GroupStatus;
+use crate::types::{ContributionType, GroupStatus};
 use crate::{SoroSaveContract, SoroSaveContractClient};
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
@@ -46,10 +46,48 @@ fn test_create_group() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, admin);
+    assert_eq!(group.contribution_type, ContributionType::Fixed);
     assert_eq!(group.contribution_amount, 1_000_000);
     assert_eq!(group.max_members, 5);
     assert_eq!(group.status, GroupStatus::Forming);
     assert_eq!(group.members.len(), 1);
+}
+
+#[test]
+fn test_percentage_contributions_use_member_base_amounts() {
+    let (env, admin, client, _token) = setup_env();
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin.clone());
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+
+    let member1 = Address::generate(&env);
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let group_id = client.create_percentage_group(
+        &admin,
+        &String::from_str(&env, "Percentage Contributions"),
+        &token_id.address(),
+        &1_000,
+        &86400,
+        &5,
+    );
+
+    client.join_group(&member1, &group_id);
+    client.set_member_base_amount(&admin, &group_id, &5_000_000);
+    client.set_member_base_amount(&member1, &group_id, &2_000_000);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&admin, &group_id);
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.total_contributed, 500_000);
+    assert!(!round.is_complete);
+
+    client.contribute(&member1, &group_id);
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.total_contributed, 700_000);
+    assert!(round.is_complete);
 }
 
 #[test]

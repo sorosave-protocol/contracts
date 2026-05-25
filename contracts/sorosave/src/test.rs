@@ -1,7 +1,7 @@
 use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
 
 use crate::types::GroupStatus;
-use crate::{SoroSaveContract, SoroSaveContractClient};
+use crate::{ContractError, SoroSaveContract, SoroSaveContractClient};
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
     let env = Env::default();
@@ -221,4 +221,127 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_protocol_pause_requires_protocol_admin() {
+    let (env, admin, client, _token) = setup_env();
+    let member = Address::generate(&env);
+
+    assert!(!client.is_protocol_paused());
+    assert_eq!(
+        client.try_pause_protocol(&member),
+        Err(Ok(ContractError::Unauthorized))
+    );
+
+    client.pause_protocol(&admin);
+    assert!(client.is_protocol_paused());
+
+    assert_eq!(
+        client.try_unpause_protocol(&member),
+        Err(Ok(ContractError::Unauthorized))
+    );
+
+    client.unpause_protocol(&admin);
+    assert!(!client.is_protocol_paused());
+}
+
+#[test]
+fn test_protocol_pause_blocks_group_lifecycle_mutations() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+
+    client.pause_protocol(&admin);
+
+    let member2 = Address::generate(&env);
+    assert_eq!(
+        client.try_create_group(
+            &admin,
+            &String::from_str(&env, "Paused Create"),
+            &token,
+            &1_000_000,
+            &86400,
+            &5,
+        ),
+        Err(Ok(ContractError::ProtocolPaused))
+    );
+    assert_eq!(
+        client.try_join_group(&member2, &group_id),
+        Err(Ok(ContractError::ProtocolPaused))
+    );
+    assert_eq!(
+        client.try_leave_group(&member1, &group_id),
+        Err(Ok(ContractError::ProtocolPaused))
+    );
+    assert_eq!(
+        client.try_start_group(&admin, &group_id),
+        Err(Ok(ContractError::ProtocolPaused))
+    );
+
+    client.unpause_protocol(&admin);
+    client.start_group(&admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+}
+
+#[test]
+fn test_protocol_pause_blocks_active_group_mutations_until_unpaused() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let contract_id = env.register(SoroSaveContract, (&admin,));
+    let client = SoroSaveContractClient::new(&env, &contract_id);
+
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin);
+    let token = token_id.address();
+    let token_sac = StellarAssetClient::new(&env, &token);
+
+    let member1 = Address::generate(&env);
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Paused Active Group"),
+        &token,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.pause_protocol(&admin);
+
+    assert_eq!(
+        client.try_contribute(&member1, &group_id),
+        Err(Ok(ContractError::ProtocolPaused))
+    );
+    assert_eq!(
+        client.try_distribute_payout(&group_id),
+        Err(Ok(ContractError::ProtocolPaused))
+    );
+    assert_eq!(
+        client.try_pause_group(&admin, &group_id),
+        Err(Ok(ContractError::ProtocolPaused))
+    );
+    assert_eq!(
+        client.try_raise_dispute(
+            &member1,
+            &group_id,
+            &String::from_str(&env, "Blocked while paused"),
+        ),
+        Err(Ok(ContractError::ProtocolPaused))
+    );
+    assert_eq!(
+        client.try_set_group_admin(&admin, &group_id, &member1),
+        Err(Ok(ContractError::ProtocolPaused))
+    );
+
+    client.unpause_protocol(&admin);
+    client.contribute(&member1, &group_id);
+    assert!(client.has_contributed(&member1, &group_id, &1));
 }

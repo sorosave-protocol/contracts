@@ -172,6 +172,83 @@ fn test_member_groups() {
 }
 
 #[test]
+fn test_save_template_and_create_from_template() {
+    let (env, admin, client, token) = setup_env();
+
+    let template_id = client.save_template(
+        &admin,
+        &String::from_str(&env, "Payroll Circle"),
+        &token,
+        &2_500_000,
+        &604800,
+        &4,
+    );
+    assert_eq!(template_id, 0);
+
+    let template = client.get_template(&admin, &template_id);
+    assert_eq!(template.name, String::from_str(&env, "Payroll Circle"));
+    assert_eq!(template.token, token);
+    assert_eq!(template.contribution_amount, 2_500_000);
+    assert_eq!(template.cycle_length, 604800);
+    assert_eq!(template.max_members, 4);
+
+    let other_admin = Address::generate(&env);
+    assert!(client.try_get_template(&other_admin, &template_id).is_err());
+    let other_template_id = client.save_template(
+        &other_admin,
+        &String::from_str(&env, "Other Admin Template"),
+        &token,
+        &1_000_000,
+        &86400,
+        &3,
+    );
+    assert_eq!(other_template_id, 0);
+
+    let group_id = client.create_from_template(&admin, &template_id);
+    assert_eq!(group_id, 1);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.name, String::from_str(&env, "Payroll Circle"));
+    assert_eq!(group.admin, admin);
+    assert_eq!(group.token, token);
+    assert_eq!(group.contribution_amount, 2_500_000);
+    assert_eq!(group.cycle_length, 604800);
+    assert_eq!(group.max_members, 4);
+    assert_eq!(group.status, GroupStatus::Forming);
+    assert_eq!(group.members.len(), 1);
+
+    let groups = client.get_member_groups(&admin);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups.get(0).unwrap(), group_id);
+}
+
+#[test]
+fn test_template_limit_per_admin() {
+    let (env, admin, client, token) = setup_env();
+
+    for _ in 0..10 {
+        client.save_template(
+            &admin,
+            &String::from_str(&env, "Limited Template"),
+            &token,
+            &1_000_000,
+            &86400,
+            &3,
+        );
+    }
+
+    let result = client.try_save_template(
+        &admin,
+        &String::from_str(&env, "Overflow Template"),
+        &token,
+        &1_000_000,
+        &86400,
+        &3,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
 fn test_pause_resume_group() {
     let (env, admin, client, token) = setup_env();
     let group_id = create_test_group(&env, &client, &admin, &token);

@@ -30,6 +30,17 @@ pub struct SavingsGroup {
     pub created_at: u64,
 }
 
+/// Reusable group creation preset owned by an admin.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct GroupTemplate {
+    pub name: String,
+    pub token: Address,
+    pub contribution_amount: i128,
+    pub cycle_length: u64,
+    pub max_members: u32,
+}
+
 /// Tracks contributions and payout status for a single round.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -60,5 +71,6 @@ pub enum DataKey {
     Group(u64),
     Round(u64, u32),
     MemberGroups(Address),
+    GroupTemplates(Address),
     Dispute(u64),
 }

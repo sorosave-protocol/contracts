@@ -2,7 +2,9 @@ use soroban_sdk::{Address, Env, Map, String, Vec};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{GroupStatus, RoundInfo, SavingsGroup};
+use crate::types::{GroupStatus, GroupTemplate, RoundInfo, SavingsGroup};
+
+const MAX_TEMPLATES_PER_ADMIN: u32 = 10;
 
 pub fn create_group(
     env: &Env,
@@ -15,12 +17,27 @@ pub fn create_group(
 ) -> Result<u64, ContractError> {
     admin.require_auth();
 
-    if contribution_amount <= 0 {
-        return Err(ContractError::InvalidAmount);
-    }
-    if max_members < 2 {
-        return Err(ContractError::InsufficientMembers);
-    }
+    create_group_after_auth(
+        env,
+        admin,
+        name,
+        token,
+        contribution_amount,
+        cycle_length,
+        max_members,
+    )
+}
+
+fn create_group_after_auth(
+    env: &Env,
+    admin: Address,
+    name: String,
+    token: Address,
+    contribution_amount: i128,
+    cycle_length: u64,
+    max_members: u32,
+) -> Result<u64, ContractError> {
+    validate_group_config(contribution_amount, max_members)?;
 
     let group_id = storage::get_group_counter(env) + 1;
     storage::set_group_counter(env, group_id);
@@ -51,6 +68,17 @@ pub fn create_group(
         .publish((crate::symbol_short!("grp_creat"),), group_id);
 
     Ok(group_id)
+}
+
+fn validate_group_config(contribution_amount: i128, max_members: u32) -> Result<(), ContractError> {
+    if contribution_amount <= 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+    if max_members < 2 {
+        return Err(ContractError::InsufficientMembers);
+    }
+
+    Ok(())
 }
 
 pub fn join_group(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
@@ -170,4 +198,70 @@ pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError
 
 pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
     storage::get_member_groups(env, &member)
+}
+
+pub fn save_template(
+    env: &Env,
+    admin: Address,
+    name: String,
+    token: Address,
+    contribution_amount: i128,
+    cycle_length: u64,
+    max_members: u32,
+) -> Result<u32, ContractError> {
+    admin.require_auth();
+    validate_group_config(contribution_amount, max_members)?;
+
+    let mut templates = storage::get_group_templates(env, &admin);
+    if templates.len() >= MAX_TEMPLATES_PER_ADMIN {
+        return Err(ContractError::TemplateLimitReached);
+    }
+
+    let template_id = templates.len();
+    templates.push_back(GroupTemplate {
+        name,
+        token,
+        contribution_amount,
+        cycle_length,
+        max_members,
+    });
+    storage::set_group_templates(env, &admin, &templates);
+
+    env.events()
+        .publish((crate::symbol_short!("tmpl_save"),), (admin, template_id));
+
+    Ok(template_id)
+}
+
+pub fn get_template(
+    env: &Env,
+    admin: Address,
+    template_id: u32,
+) -> Result<GroupTemplate, ContractError> {
+    storage::get_group_template(env, &admin, template_id).ok_or(ContractError::TemplateNotFound)
+}
+
+pub fn create_from_template(
+    env: &Env,
+    admin: Address,
+    template_id: u32,
+) -> Result<u64, ContractError> {
+    admin.require_auth();
+
+    let template = storage::get_group_template(env, &admin, template_id)
+        .ok_or(ContractError::TemplateNotFound)?;
+    let group_id = create_group_after_auth(
+        env,
+        admin,
+        template.name,
+        template.token,
+        template.contribution_amount,
+        template.cycle_length,
+        template.max_members,
+    )?;
+
+    env.events()
+        .publish((crate::symbol_short!("tmpl_use"),), (template_id, group_id));
+
+    Ok(group_id)
 }

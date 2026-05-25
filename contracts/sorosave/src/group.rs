@@ -42,6 +42,7 @@ pub fn create_group(
         total_rounds: 0,
         status: GroupStatus::Forming,
         created_at: env.ledger().timestamp(),
+        max_consecutive_misses: 3,
     };
 
     storage::set_group(env, &group);
@@ -150,6 +151,7 @@ pub fn start_group(env: &Env, admin: Address, group_id: u64) -> Result<(), Contr
         round_number: 1,
         recipient: first_recipient,
         contributions: Map::new(env),
+        misses: Map::new(env),
         total_contributed: 0,
         is_complete: false,
         deadline: env.ledger().timestamp() + group.cycle_length,
@@ -170,4 +172,30 @@ pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError
 
 pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
     storage::get_member_groups(env, &member)
+}
+
+pub fn set_max_consecutive_misses(
+    env: &Env,
+    admin: Address,
+    group_id: u64,
+    max_misses: u32,
+) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    if max_misses == 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    if admin != group.admin && admin != storage::get_admin(env) {
+        return Err(ContractError::Unauthorized);
+    }
+
+    group.max_consecutive_misses = max_misses;
+    storage::set_group(env, &group);
+
+    env.events()
+        .publish((crate::symbol_short!("miss_cfg"),), (group_id, max_misses));
+
+    Ok(())
 }

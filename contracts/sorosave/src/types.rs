@@ -28,6 +28,7 @@ pub struct SavingsGroup {
     pub total_rounds: u32,
     pub status: GroupStatus,
     pub created_at: u64,
+    pub max_consecutive_misses: u32,
 }
 
 /// Tracks contributions and payout status for a single round.
@@ -37,6 +38,7 @@ pub struct RoundInfo {
     pub round_number: u32,
     pub recipient: Address,
     pub contributions: Map<Address, bool>,
+    pub misses: Map<Address, bool>,
     pub total_contributed: i128,
     pub is_complete: bool,
     pub deadline: u64,
@@ -60,5 +62,6 @@ pub enum DataKey {
     Group(u64),
     Round(u64, u32),
     MemberGroups(Address),
+    MemberMisses(u64, Address),
     Dispute(u64),
 }

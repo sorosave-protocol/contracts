@@ -64,6 +64,16 @@ impl SoroSaveContract {
         group::start_group(&env, admin, group_id)
     }
 
+    /// Configure how many consecutive missed contributions remove a member.
+    pub fn set_max_consecutive_misses(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        max_misses: u32,
+    ) -> Result<(), ContractError> {
+        group::set_max_consecutive_misses(&env, admin, group_id, max_misses)
+    }
+
     /// Get group details.
     pub fn get_group(env: Env, group_id: u64) -> Result<SavingsGroup, ContractError> {
         group::get_group(&env, group_id)
@@ -98,6 +108,25 @@ impl SoroSaveContract {
         round: u32,
     ) -> Result<bool, ContractError> {
         contribution::has_contributed(&env, member, group_id, round)
+    }
+
+    /// Get a member's current consecutive missed contribution count.
+    pub fn get_consecutive_misses(
+        env: Env,
+        group_id: u64,
+        member: Address,
+    ) -> Result<u32, ContractError> {
+        contribution::get_consecutive_misses(&env, group_id, member)
+    }
+
+    /// Record a missed contribution after the active round deadline.
+    pub fn record_missed_contribution(
+        env: Env,
+        admin: Address,
+        group_id: u64,
+        member: Address,
+    ) -> Result<(), ContractError> {
+        contribution::record_missed_contribution(&env, admin, group_id, member)
     }
 
     // ─── Payouts ────────────────────────────────────────────────────

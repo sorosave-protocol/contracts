@@ -1,4 +1,8 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env, String,
+};
 
 use crate::types::GroupStatus;
 use crate::{SoroSaveContract, SoroSaveContractClient};
@@ -221,4 +225,114 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_set_max_consecutive_misses() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    assert_eq!(client.get_group(&group_id).max_consecutive_misses, 3);
+
+    client.set_max_consecutive_misses(&admin, &group_id, &1);
+    assert_eq!(client.get_group(&group_id).max_consecutive_misses, 1);
+}
+
+#[test]
+fn test_missed_contribution_removes_member_and_redistributes_slot() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let contract_id = env.register(SoroSaveContract, (&admin,));
+    let client = SoroSaveContractClient::new(&env, &contract_id);
+
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin);
+    let token = token_id.address();
+    let token_sac = StellarAssetClient::new(&env, &token);
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+    token_sac.mint(&member2, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Miss Removal"),
+        &token,
+        &1_000_000,
+        &1,
+        &3,
+    );
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.set_max_consecutive_misses(&admin, &group_id, &1);
+    client.start_group(&admin, &group_id);
+
+    env.ledger().with_mut(|ledger| ledger.timestamp = 2);
+    client.record_missed_contribution(&admin, &group_id, &member1);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.members.len(), 2);
+    for member in group.members.iter() {
+        assert_ne!(member, member1);
+    }
+    for recipient in group.payout_order.iter() {
+        assert_ne!(recipient, member1);
+    }
+    assert_eq!(client.get_member_groups(&member1).len(), 0);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member2, &group_id);
+    assert!(client.get_round_status(&group_id, &1).is_complete);
+
+    client.distribute_payout(&group_id);
+    assert_eq!(client.get_current_recipient(&group_id), member2);
+}
+
+#[test]
+fn test_successful_contribution_resets_misses() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let contract_id = env.register(SoroSaveContract, (&admin,));
+    let client = SoroSaveContractClient::new(&env, &contract_id);
+
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin);
+    let token = token_id.address();
+    let token_sac = StellarAssetClient::new(&env, &token);
+
+    let member1 = Address::generate(&env);
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Miss Reset"),
+        &token,
+        &1_000_000,
+        &1,
+        &2,
+    );
+    client.join_group(&member1, &group_id);
+    client.set_max_consecutive_misses(&admin, &group_id, &2);
+    client.start_group(&admin, &group_id);
+
+    env.ledger().with_mut(|ledger| ledger.timestamp = 2);
+    client.record_missed_contribution(&admin, &group_id, &member1);
+    assert_eq!(client.get_consecutive_misses(&group_id, &member1), 1);
+
+    client.contribute(&admin, &group_id);
+    assert!(client.get_round_status(&group_id, &1).is_complete);
+    client.distribute_payout(&group_id);
+
+    client.contribute(&member1, &group_id);
+    assert_eq!(client.get_consecutive_misses(&group_id, &member1), 0);
+
+    let token_client = TokenClient::new(&env, &token);
+    assert_eq!(token_client.balance(&member1), 9_000_000);
 }

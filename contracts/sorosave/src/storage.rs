@@ -103,6 +103,28 @@ pub fn remove_member_group(env: &Env, member: &Address, group_id: u64) {
     extend_persistent_ttl(env, &key);
 }
 
+// --- Consecutive missed contributions ---
+
+pub fn get_consecutive_misses(env: &Env, group_id: u64, member: &Address) -> u32 {
+    let key = DataKey::MemberMisses(group_id, member.clone());
+    let result = env.storage().persistent().get(&key).unwrap_or(0);
+    if result > 0 {
+        extend_persistent_ttl(env, &key);
+    }
+    result
+}
+
+pub fn set_consecutive_misses(env: &Env, group_id: u64, member: &Address, misses: u32) {
+    let key = DataKey::MemberMisses(group_id, member.clone());
+    env.storage().persistent().set(&key, &misses);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn clear_consecutive_misses(env: &Env, group_id: u64, member: &Address) {
+    let key = DataKey::MemberMisses(group_id, member.clone());
+    env.storage().persistent().remove(&key);
+}
+
 // --- Dispute ---
 
 #[allow(dead_code)]

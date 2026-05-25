@@ -13,6 +13,48 @@ pub fn create_group(
     cycle_length: u64,
     max_members: u32,
 ) -> Result<u64, ContractError> {
+    let mut accepted_tokens = Vec::new(env);
+    accepted_tokens.push_back(token);
+    create_group_with_tokens(
+        env,
+        admin,
+        name,
+        accepted_tokens,
+        contribution_amount,
+        cycle_length,
+        max_members,
+    )
+}
+
+pub fn create_multi_token_group(
+    env: &Env,
+    admin: Address,
+    name: String,
+    accepted_tokens: Vec<Address>,
+    contribution_amount: i128,
+    cycle_length: u64,
+    max_members: u32,
+) -> Result<u64, ContractError> {
+    create_group_with_tokens(
+        env,
+        admin,
+        name,
+        accepted_tokens,
+        contribution_amount,
+        cycle_length,
+        max_members,
+    )
+}
+
+fn create_group_with_tokens(
+    env: &Env,
+    admin: Address,
+    name: String,
+    accepted_tokens: Vec<Address>,
+    contribution_amount: i128,
+    cycle_length: u64,
+    max_members: u32,
+) -> Result<u64, ContractError> {
     admin.require_auth();
 
     if contribution_amount <= 0 {
@@ -21,6 +63,11 @@ pub fn create_group(
     if max_members < 2 {
         return Err(ContractError::InsufficientMembers);
     }
+    if accepted_tokens.is_empty() {
+        return Err(ContractError::InvalidAmount);
+    }
+
+    let token = accepted_tokens.get(0).unwrap();
 
     let group_id = storage::get_group_counter(env) + 1;
     storage::set_group_counter(env, group_id);
@@ -33,6 +80,7 @@ pub fn create_group(
         name,
         admin: admin.clone(),
         token,
+        accepted_tokens,
         contribution_amount,
         cycle_length,
         max_members,
@@ -150,6 +198,7 @@ pub fn start_group(env: &Env, admin: Address, group_id: u64) -> Result<(), Contr
         round_number: 1,
         recipient: first_recipient,
         contributions: Map::new(env),
+        token_contributions: Map::new(env),
         total_contributed: 0,
         is_complete: false,
         deadline: env.ledger().timestamp() + group.cycle_length,

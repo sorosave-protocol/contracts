@@ -2,9 +2,28 @@ use soroban_sdk::{Address, Env};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{GroupStatus, RoundInfo};
+use crate::types::{GroupStatus, RoundInfo, SavingsGroup};
+
+fn is_token_accepted(group: &SavingsGroup, token: &Address) -> bool {
+    for accepted_token in group.accepted_tokens.iter() {
+        if accepted_token == token.clone() {
+            return true;
+        }
+    }
+    false
+}
 
 pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    contribute_with_token(env, member, group_id, group.token)
+}
+
+pub fn contribute_with_token(
+    env: &Env,
+    member: Address,
+    group_id: u64,
+    token: Address,
+) -> Result<(), ContractError> {
     member.require_auth();
 
     let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
@@ -25,6 +44,10 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
         return Err(ContractError::NotMember);
     }
 
+    if !is_token_accepted(&group, &token) {
+        return Err(ContractError::InvalidAmount);
+    }
+
     let mut round_info = storage::get_round(env, group_id, group.current_round)
         .ok_or(ContractError::RoundNotActive)?;
 
@@ -38,7 +61,7 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     }
 
     // Transfer tokens from member to this contract
-    let token_client = soroban_sdk::token::Client::new(env, &group.token);
+    let token_client = soroban_sdk::token::Client::new(env, &token);
     token_client.transfer(
         &member,
         &env.current_contract_address(),
@@ -48,6 +71,14 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     // Record contribution
     round_info.contributions.set(member.clone(), true);
     round_info.total_contributed += group.contribution_amount;
+    let token_total = round_info
+        .token_contributions
+        .get(token.clone())
+        .unwrap_or(0)
+        + group.contribution_amount;
+    round_info
+        .token_contributions
+        .set(token.clone(), token_total);
 
     // Check if all members have contributed
     if round_info.contributions.len() == group.members.len() {
@@ -58,7 +89,7 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
 
     env.events().publish(
         (crate::symbol_short!("contrib"),),
-        (group_id, member, group.contribution_amount),
+        (group_id, member, token, group.contribution_amount),
     );
 
     Ok(())

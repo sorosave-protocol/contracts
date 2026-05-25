@@ -49,6 +49,27 @@ impl SoroSaveContract {
         )
     }
 
+    /// Create a savings group that accepts any token in the provided allowlist.
+    pub fn create_multi_token_group(
+        env: Env,
+        admin: Address,
+        name: String,
+        accepted_tokens: Vec<Address>,
+        contribution_amount: i128,
+        cycle_length: u64,
+        max_members: u32,
+    ) -> Result<u64, ContractError> {
+        group::create_multi_token_group(
+            &env,
+            admin,
+            name,
+            accepted_tokens,
+            contribution_amount,
+            cycle_length,
+            max_members,
+        )
+    }
+
     /// Join an existing group that is still forming.
     pub fn join_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
         group::join_group(&env, member, group_id)
@@ -79,6 +100,16 @@ impl SoroSaveContract {
     /// Contribute to the current round of a group.
     pub fn contribute(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
         contribution::contribute(&env, member, group_id)
+    }
+
+    /// Contribute to the current round using an accepted token.
+    pub fn contribute_with_token(
+        env: Env,
+        member: Address,
+        group_id: u64,
+        token: Address,
+    ) -> Result<(), ContractError> {
+        contribution::contribute_with_token(&env, member, group_id, token)
     }
 
     /// Get the status of a specific round.

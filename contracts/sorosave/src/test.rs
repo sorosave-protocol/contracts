@@ -1,7 +1,11 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Events, Ledger},
+    token::StellarAssetClient,
+    Address, Env, String,
+};
 
 use crate::types::GroupStatus;
-use crate::{SoroSaveContract, SoroSaveContractClient};
+use crate::{ContractError, SoroSaveContract, SoroSaveContractClient};
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
     let env = Env::default();
@@ -36,6 +40,49 @@ fn create_test_group(
         &86400,     // 1 day cycle
         &5,         // max 5 members
     )
+}
+
+fn create_funded_group(
+    env: &Env,
+    client: &SoroSaveContractClient,
+    admin: &Address,
+    members: &[Address],
+    cycle_length: u64,
+) -> u64 {
+    let token_admin = Address::generate(env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin);
+    let token_address = token_id.address();
+    let token_sac = StellarAssetClient::new(env, &token_address);
+
+    token_sac.mint(admin, &10_000_000);
+    for member in members {
+        token_sac.mint(member, &10_000_000);
+    }
+
+    let group_id = client.create_group(
+        admin,
+        &String::from_str(env, "Deadline Test Group"),
+        &token_address,
+        &1_000_000,
+        &cycle_length,
+        &5,
+    );
+
+    for member in members {
+        client.join_group(member, &group_id);
+    }
+
+    group_id
+}
+
+fn vec_contains_address(values: &soroban_sdk::Vec<Address>, needle: &Address) -> bool {
+    for value in values.iter() {
+        if value == needle.clone() {
+            return true;
+        }
+    }
+
+    false
 }
 
 #[test]
@@ -96,6 +143,93 @@ fn test_start_group() {
     assert_eq!(group.current_round, 1);
     assert_eq!(group.total_rounds, 2);
     assert_eq!(group.payout_order.len(), 2);
+
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.defaulted_members.len(), 0);
+}
+
+#[test]
+fn test_late_contribution_is_rejected_after_deadline() {
+    let (env, admin, client, _) = setup_env();
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let group_id = create_funded_group(
+        &env,
+        &client,
+        &admin,
+        &[member1.clone(), member2.clone()],
+        10,
+    );
+
+    client.start_group(&admin, &group_id);
+    client.contribute(&admin, &group_id);
+
+    let round = client.get_round_status(&group_id, &1);
+    env.ledger().set_timestamp(round.deadline + 1);
+
+    assert_eq!(
+        client.try_contribute(&member1, &group_id),
+        Err(Ok(ContractError::RoundNotActive))
+    );
+}
+
+#[test]
+fn test_mark_defaults_records_missing_members_after_deadline() {
+    let (env, admin, client, _) = setup_env();
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let group_id = create_funded_group(
+        &env,
+        &client,
+        &admin,
+        &[member1.clone(), member2.clone()],
+        10,
+    );
+
+    client.start_group(&admin, &group_id);
+    client.contribute(&admin, &group_id);
+
+    let round = client.get_round_status(&group_id, &1);
+    env.ledger().set_timestamp(round.deadline + 1);
+
+    let events_before = env.events().all().len();
+    client.mark_defaults(&group_id);
+    let events_after = env.events().all().len();
+
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.defaulted_members.len(), 2);
+    assert!(vec_contains_address(&round.defaulted_members, &member1));
+    assert!(vec_contains_address(&round.defaulted_members, &member2));
+    assert!(!vec_contains_address(&round.defaulted_members, &admin));
+    assert_eq!(events_after - events_before, 2);
+}
+
+#[test]
+fn test_mark_defaults_is_idempotent() {
+    let (env, admin, client, _) = setup_env();
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let group_id = create_funded_group(
+        &env,
+        &client,
+        &admin,
+        &[member1.clone(), member2.clone()],
+        10,
+    );
+
+    client.start_group(&admin, &group_id);
+    client.contribute(&admin, &group_id);
+
+    let round = client.get_round_status(&group_id, &1);
+    env.ledger().set_timestamp(round.deadline + 1);
+
+    client.mark_defaults(&group_id);
+    client.mark_defaults(&group_id);
+    let events_after_second_mark = env.events().all().len();
+
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.defaulted_members.len(), 2);
+    assert_eq!(events_after_second_mark, 0);
 }
 
 #[test]

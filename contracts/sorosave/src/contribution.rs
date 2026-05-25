@@ -2,7 +2,7 @@ use soroban_sdk::{Address, Env};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{GroupStatus, RoundInfo};
+use crate::types::{GroupStatus, RoundInfo, SavingsGroup};
 
 pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
     member.require_auth();
@@ -29,6 +29,10 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
         .ok_or(ContractError::RoundNotActive)?;
 
     if round_info.is_complete {
+        return Err(ContractError::RoundNotActive);
+    }
+
+    if env.ledger().timestamp() > round_info.deadline {
         return Err(ContractError::RoundNotActive);
     }
 
@@ -64,6 +68,26 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     Ok(())
 }
 
+pub fn mark_defaults(env: &Env, group_id: u64) -> Result<(), ContractError> {
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if group.status != GroupStatus::Active {
+        return Err(ContractError::GroupNotActive);
+    }
+
+    let mut round_info = storage::get_round(env, group_id, group.current_round)
+        .ok_or(ContractError::RoundNotActive)?;
+
+    if round_info.is_complete || env.ledger().timestamp() <= round_info.deadline {
+        return Err(ContractError::RoundNotActive);
+    }
+
+    record_round_defaults(env, group_id, &group, &mut round_info);
+    storage::set_round(env, group_id, &round_info);
+
+    Ok(())
+}
+
 pub fn get_round_status(env: &Env, group_id: u64, round: u32) -> Result<RoundInfo, ContractError> {
     storage::get_round(env, group_id, round).ok_or(ContractError::RoundNotActive)
 }
@@ -77,4 +101,35 @@ pub fn has_contributed(
     let round_info =
         storage::get_round(env, group_id, round).ok_or(ContractError::RoundNotActive)?;
     Ok(round_info.contributions.contains_key(member))
+}
+
+fn record_round_defaults(
+    env: &Env,
+    group_id: u64,
+    group: &SavingsGroup,
+    round_info: &mut RoundInfo,
+) {
+    for member in group.members.iter() {
+        if round_info.contributions.contains_key(member.clone())
+            || member_has_defaulted(round_info, &member)
+        {
+            continue;
+        }
+
+        round_info.defaulted_members.push_back(member.clone());
+        env.events().publish(
+            (crate::symbol_short!("default"),),
+            (group_id, round_info.round_number, member),
+        );
+    }
+}
+
+fn member_has_defaulted(round_info: &RoundInfo, member: &Address) -> bool {
+    for defaulted in round_info.defaulted_members.iter() {
+        if defaulted == member.clone() {
+            return true;
+        }
+    }
+
+    false
 }

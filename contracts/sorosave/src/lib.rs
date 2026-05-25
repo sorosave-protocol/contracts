@@ -81,6 +81,11 @@ impl SoroSaveContract {
         contribution::contribute(&env, member, group_id)
     }
 
+    /// Record members who missed the current round's contribution deadline.
+    pub fn mark_defaults(env: Env, group_id: u64) -> Result<(), ContractError> {
+        contribution::mark_defaults(&env, group_id)
+    }
+
     /// Get the status of a specific round.
     pub fn get_round_status(
         env: Env,

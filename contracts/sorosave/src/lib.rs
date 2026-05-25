@@ -49,9 +49,50 @@ impl SoroSaveContract {
         )
     }
 
+    /// Create a savings group where each member contributes a percentage of
+    /// their declared base amount.
+    pub fn create_percentage_group(
+        env: Env,
+        admin: Address,
+        name: String,
+        token: Address,
+        contribution_percentage_bps: u32,
+        cycle_length: u64,
+        max_members: u32,
+    ) -> Result<u64, ContractError> {
+        group::create_percentage_group(
+            &env,
+            admin,
+            name,
+            token,
+            contribution_percentage_bps,
+            cycle_length,
+            max_members,
+        )
+    }
+
     /// Join an existing group that is still forming.
     pub fn join_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
         group::join_group(&env, member, group_id)
+    }
+
+    /// Declare a member's base amount for percentage-based contributions.
+    pub fn set_member_base_amount(
+        env: Env,
+        member: Address,
+        group_id: u64,
+        base_amount: i128,
+    ) -> Result<(), ContractError> {
+        group::set_member_base_amount(&env, member, group_id, base_amount)
+    }
+
+    /// Get a member's declared base amount for a group.
+    pub fn get_member_base_amount(
+        env: Env,
+        member: Address,
+        group_id: u64,
+    ) -> Result<i128, ContractError> {
+        group::get_member_base_amount(&env, member, group_id)
     }
 
     /// Leave a group (only allowed while group is still forming).
@@ -79,6 +120,15 @@ impl SoroSaveContract {
     /// Contribute to the current round of a group.
     pub fn contribute(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
         contribution::contribute(&env, member, group_id)
+    }
+
+    /// Get the amount a member is required to contribute to a group.
+    pub fn get_required_contribution(
+        env: Env,
+        member: Address,
+        group_id: u64,
+    ) -> Result<i128, ContractError> {
+        contribution::get_required_contribution(&env, member, group_id)
     }
 
     /// Get the status of a specific round.

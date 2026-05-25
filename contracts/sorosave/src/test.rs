@@ -1,7 +1,7 @@
 use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
 
-use crate::types::GroupStatus;
-use crate::{SoroSaveContract, SoroSaveContractClient};
+use crate::types::{ContributionType, GroupStatus};
+use crate::{ContractError, SoroSaveContract, SoroSaveContractClient};
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
     let env = Env::default();
@@ -47,6 +47,8 @@ fn test_create_group() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, admin);
     assert_eq!(group.contribution_amount, 1_000_000);
+    assert_eq!(group.contribution_type, ContributionType::Fixed);
+    assert_eq!(group.contribution_percentage_bps, 0);
     assert_eq!(group.max_members, 5);
     assert_eq!(group.status, GroupStatus::Forming);
     assert_eq!(group.members.len(), 1);
@@ -169,6 +171,105 @@ fn test_member_groups() {
     assert_eq!(groups.len(), 2);
     assert_eq!(groups.get(0).unwrap(), group1);
     assert_eq!(groups.get(1).unwrap(), group2);
+}
+
+#[test]
+fn test_percentage_group_requires_base_amounts() {
+    let (env, admin, client, token) = setup_env();
+    let member1 = Address::generate(&env);
+
+    assert_eq!(
+        client.try_create_percentage_group(
+            &admin,
+            &String::from_str(&env, "Invalid Percentage Group"),
+            &token,
+            &0,
+            &86400,
+            &5,
+        ),
+        Err(Ok(ContractError::InvalidAmount))
+    );
+    assert_eq!(
+        client.try_create_percentage_group(
+            &admin,
+            &String::from_str(&env, "Too High Percentage Group"),
+            &token,
+            &10_001,
+            &86400,
+            &5,
+        ),
+        Err(Ok(ContractError::InvalidAmount))
+    );
+
+    let group_id = client.create_percentage_group(
+        &admin,
+        &String::from_str(&env, "Percentage Group"),
+        &token,
+        &1_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.set_member_base_amount(&admin, &group_id, &10_000_000);
+
+    assert_eq!(
+        client.try_start_group(&admin, &group_id),
+        Err(Ok(ContractError::InvalidAmount))
+    );
+}
+
+#[test]
+fn test_percentage_contribution_flow() {
+    let (env, admin, client, _) = setup_env();
+    let member1 = Address::generate(&env);
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let group_id = client.create_percentage_group(
+        &admin,
+        &String::from_str(&env, "Percentage Flow"),
+        &token_id.address(),
+        &1_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.set_member_base_amount(&admin, &group_id, &10_000_000);
+    client.set_member_base_amount(&member1, &group_id, &20_000_000);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.contribution_type, ContributionType::Percentage);
+    assert_eq!(group.contribution_amount, 0);
+    assert_eq!(group.contribution_percentage_bps, 1_000);
+    assert_eq!(
+        client.get_member_base_amount(&member1, &group_id),
+        20_000_000
+    );
+    assert_eq!(
+        client.get_required_contribution(&admin, &group_id),
+        1_000_000
+    );
+    assert_eq!(
+        client.get_required_contribution(&member1, &group_id),
+        2_000_000
+    );
+
+    client.start_group(&admin, &group_id);
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+
+    let round = client.get_round_status(&group_id, &1);
+    assert!(round.is_complete);
+    assert_eq!(round.total_contributed, 3_000_000);
+
+    client.distribute_payout(&group_id);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.current_round, 2);
 }
 
 #[test]

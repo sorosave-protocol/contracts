@@ -4,6 +4,36 @@ use crate::errors::ContractError;
 use crate::storage;
 use crate::types::{Dispute, GroupStatus};
 
+pub fn pause_protocol(env: &Env, admin: Address) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    if admin != storage::get_admin(env) {
+        return Err(ContractError::Unauthorized);
+    }
+
+    storage::set_protocol_paused(env, true);
+
+    env.events()
+        .publish((crate::symbol_short!("proto_ps"),), admin);
+
+    Ok(())
+}
+
+pub fn unpause_protocol(env: &Env, admin: Address) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    if admin != storage::get_admin(env) {
+        return Err(ContractError::Unauthorized);
+    }
+
+    storage::set_protocol_paused(env, false);
+
+    env.events()
+        .publish((crate::symbol_short!("proto_up"),), admin);
+
+    Ok(())
+}
+
 pub fn pause_group(env: &Env, admin: Address, group_id: u64) -> Result<(), ContractError> {
     admin.require_auth();
 

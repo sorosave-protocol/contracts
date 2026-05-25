@@ -1,5 +1,6 @@
 use soroban_sdk::{Address, Env, Vec};
 
+use crate::errors::ContractError;
 use crate::types::{DataKey, Dispute, RoundInfo, SavingsGroup};
 
 const INSTANCE_TTL_THRESHOLD: u32 = 100;
@@ -20,6 +21,32 @@ pub fn set_admin(env: &Env, admin: &Address) {
 
 pub fn has_admin(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Admin)
+}
+
+// --- Protocol Pause ---
+
+pub fn is_protocol_paused(env: &Env) -> bool {
+    let paused = env
+        .storage()
+        .instance()
+        .get(&DataKey::ProtocolPaused)
+        .unwrap_or(false);
+    extend_instance_ttl(env);
+    paused
+}
+
+pub fn set_protocol_paused(env: &Env, paused: bool) {
+    env.storage()
+        .instance()
+        .set(&DataKey::ProtocolPaused, &paused);
+    extend_instance_ttl(env);
+}
+
+pub fn ensure_protocol_active(env: &Env) -> Result<(), ContractError> {
+    if is_protocol_paused(env) {
+        return Err(ContractError::ProtocolPaused);
+    }
+    Ok(())
 }
 
 // --- Group Counter ---

@@ -11,6 +11,14 @@ pub enum GroupStatus {
     Paused,    // Admin has paused the group
 }
 
+/// How member contributions are calculated for each round.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum ContributionType {
+    Fixed,
+    Percentage,
+}
+
 /// Core savings group configuration and state.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -19,7 +27,10 @@ pub struct SavingsGroup {
     pub name: String,
     pub admin: Address,
     pub token: Address,
+    pub contribution_type: ContributionType,
+    /// Fixed token amount, or basis points of each member's declared base amount.
     pub contribution_amount: i128,
+    pub member_base_amounts: Map<Address, i128>,
     pub cycle_length: u64,
     pub max_members: u32,
     pub members: Vec<Address>,

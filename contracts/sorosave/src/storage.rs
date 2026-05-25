@@ -1,6 +1,6 @@
 use soroban_sdk::{Address, Env, Vec};
 
-use crate::types::{DataKey, Dispute, RoundInfo, SavingsGroup};
+use crate::types::{DataKey, Dispute, GroupTemplate, RoundInfo, SavingsGroup};
 
 const INSTANCE_TTL_THRESHOLD: u32 = 100;
 const INSTANCE_TTL_EXTEND: u32 = 500;
@@ -101,6 +101,31 @@ pub fn remove_member_group(env: &Env, member: &Address, group_id: u64) {
     }
     env.storage().persistent().set(&key, &new_groups);
     extend_persistent_ttl(env, &key);
+}
+
+// --- Group Templates ---
+
+pub fn get_group_templates(env: &Env, admin: &Address) -> Vec<GroupTemplate> {
+    let key = DataKey::GroupTemplates(admin.clone());
+    let result = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(Vec::new(env));
+    if env.storage().persistent().has(&key) {
+        extend_persistent_ttl(env, &key);
+    }
+    result
+}
+
+pub fn set_group_templates(env: &Env, admin: &Address, templates: &Vec<GroupTemplate>) {
+    let key = DataKey::GroupTemplates(admin.clone());
+    env.storage().persistent().set(&key, templates);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn get_group_template(env: &Env, admin: &Address, template_id: u32) -> Option<GroupTemplate> {
+    get_group_templates(env, admin).get(template_id)
 }
 
 // --- Dispute ---

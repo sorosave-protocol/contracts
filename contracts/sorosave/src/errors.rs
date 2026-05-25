@@ -22,4 +22,6 @@ pub enum ContractError {
     InsufficientMembers = 16,
     RoundNotComplete = 17,
     GroupCompleted = 18,
+    TemplateLimitReached = 19,
+    TemplateNotFound = 20,
 }

@@ -11,6 +11,14 @@ pub enum GroupStatus {
     Paused,    // Admin has paused the group
 }
 
+/// Contribution model used by a savings group.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum ContributionType {
+    Fixed,
+    Percentage,
+}
+
 /// Core savings group configuration and state.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -20,6 +28,8 @@ pub struct SavingsGroup {
     pub admin: Address,
     pub token: Address,
     pub contribution_amount: i128,
+    pub contribution_type: ContributionType,
+    pub contribution_percentage_bps: u32,
     pub cycle_length: u64,
     pub max_members: u32,
     pub members: Vec<Address>,
@@ -60,5 +70,6 @@ pub enum DataKey {
     Group(u64),
     Round(u64, u32),
     MemberGroups(Address),
+    MemberBaseAmount(u64, Address),
     Dispute(u64),
 }

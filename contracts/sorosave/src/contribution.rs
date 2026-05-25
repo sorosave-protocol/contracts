@@ -2,7 +2,54 @@ use soroban_sdk::{Address, Env};
 
 use crate::errors::ContractError;
 use crate::storage;
-use crate::types::{GroupStatus, RoundInfo};
+use crate::types::{ContributionType, GroupStatus, RoundInfo, SavingsGroup};
+
+pub fn required_contribution_for_member(
+    env: &Env,
+    group: &SavingsGroup,
+    member: &Address,
+) -> Result<i128, ContractError> {
+    let mut is_member = false;
+    for m in group.members.iter() {
+        if m == member.clone() {
+            is_member = true;
+            break;
+        }
+    }
+    if !is_member {
+        return Err(ContractError::NotMember);
+    }
+
+    if group.contribution_type == ContributionType::Fixed {
+        return Ok(group.contribution_amount);
+    }
+
+    let base_amount = storage::get_member_base_amount(env, group.id, member)
+        .ok_or(ContractError::InvalidAmount)?;
+    if base_amount <= 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+
+    let denominator = storage::MAX_PERCENTAGE_BPS as i128;
+    let bps = group.contribution_percentage_bps as i128;
+    let required_amount =
+        (base_amount / denominator) * bps + (base_amount % denominator) * bps / denominator;
+
+    if required_amount <= 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+
+    Ok(required_amount)
+}
+
+pub fn get_required_contribution(
+    env: &Env,
+    member: Address,
+    group_id: u64,
+) -> Result<i128, ContractError> {
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    required_contribution_for_member(env, &group, &member)
+}
 
 pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
     member.require_auth();
@@ -37,17 +84,19 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
         return Err(ContractError::AlreadyContributed);
     }
 
+    let contribution_amount = required_contribution_for_member(env, &group, &member)?;
+
     // Transfer tokens from member to this contract
     let token_client = soroban_sdk::token::Client::new(env, &group.token);
     token_client.transfer(
         &member,
         &env.current_contract_address(),
-        &group.contribution_amount,
+        &contribution_amount,
     );
 
     // Record contribution
     round_info.contributions.set(member.clone(), true);
-    round_info.total_contributed += group.contribution_amount;
+    round_info.total_contributed += contribution_amount;
 
     // Check if all members have contributed
     if round_info.contributions.len() == group.members.len() {
@@ -58,7 +107,7 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
 
     env.events().publish(
         (crate::symbol_short!("contrib"),),
-        (group_id, member, group.contribution_amount),
+        (group_id, member, contribution_amount),
     );
 
     Ok(())

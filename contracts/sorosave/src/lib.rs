@@ -118,6 +118,16 @@ impl SoroSaveContract {
         payout::get_current_recipient(&env, group_id)
     }
 
+    /// Get completed round history for a group, paginated by completed-round index.
+    pub fn get_round_history(
+        env: Env,
+        group_id: u64,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<RoundInfo>, ContractError> {
+        payout::get_round_history(&env, group_id, offset, limit)
+    }
+
     // ─── Admin / Governance ─────────────────────────────────────────
 
     /// Pause an active group.

@@ -38,6 +38,9 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
     // Advance to next round or complete the group
     if group.current_round >= group.total_rounds {
         group.status = GroupStatus::Completed;
+        for member in group.members.iter() {
+            storage::increment_groups_completed(env, &member);
+        }
         storage::set_group(env, &group);
 
         env.events()

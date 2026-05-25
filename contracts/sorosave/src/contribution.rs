@@ -55,6 +55,7 @@ pub fn contribute(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
     }
 
     storage::set_round(env, group_id, &round_info);
+    storage::increment_on_time_contributions(env, &member);
 
     env.events().publish(
         (crate::symbol_short!("contrib"),),

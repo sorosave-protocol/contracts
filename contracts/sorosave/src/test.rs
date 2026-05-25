@@ -1,7 +1,11 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env, String, Vec,
+};
 
 use crate::types::GroupStatus;
-use crate::{SoroSaveContract, SoroSaveContractClient};
+use crate::{ContractError, SoroSaveContract, SoroSaveContractClient};
 
 fn setup_env() -> (Env, Address, SoroSaveContractClient<'static>, Address) {
     let env = Env::default();
@@ -46,6 +50,9 @@ fn test_create_group() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, admin);
+    assert_eq!(group.token, token);
+    assert_eq!(group.accepted_tokens.len(), 1);
+    assert_eq!(group.accepted_tokens.get(0).unwrap(), token);
     assert_eq!(group.contribution_amount, 1_000_000);
     assert_eq!(group.max_members, 5);
     assert_eq!(group.status, GroupStatus::Forming);
@@ -169,6 +176,117 @@ fn test_member_groups() {
     assert_eq!(groups.len(), 2);
     assert_eq!(groups.get(0).unwrap(), group1);
     assert_eq!(groups.get(1).unwrap(), group2);
+}
+
+#[test]
+fn test_multi_token_group_rejects_empty_allowlist() {
+    let (env, admin, client, _) = setup_env();
+    let accepted_tokens = Vec::new(&env);
+
+    assert_eq!(
+        client.try_create_multi_token_group(
+            &admin,
+            &String::from_str(&env, "Empty Token Group"),
+            &accepted_tokens,
+            &1_000_000,
+            &86400,
+            &5,
+        ),
+        Err(Ok(ContractError::InvalidAmount))
+    );
+}
+
+#[test]
+fn test_multi_token_contribution_flow() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let contract_id = env.register(SoroSaveContract, (&admin,));
+    let client = SoroSaveContractClient::new(&env, &contract_id);
+
+    let token_a_admin = Address::generate(&env);
+    let token_a_id = env.register_stellar_asset_contract_v2(token_a_admin);
+    let token_a = token_a_id.address();
+    let token_a_sac = StellarAssetClient::new(&env, &token_a);
+    token_a_sac.mint(&admin, &10_000_000);
+
+    let token_b_admin = Address::generate(&env);
+    let token_b_id = env.register_stellar_asset_contract_v2(token_b_admin);
+    let token_b = token_b_id.address();
+    let token_b_sac = StellarAssetClient::new(&env, &token_b);
+    token_b_sac.mint(&member1, &10_000_000);
+
+    let mut accepted_tokens = Vec::new(&env);
+    accepted_tokens.push_back(token_a.clone());
+    accepted_tokens.push_back(token_b.clone());
+
+    let group_id = client.create_multi_token_group(
+        &admin,
+        &String::from_str(&env, "Multi Token Group"),
+        &accepted_tokens,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    let group = client.get_group(&group_id);
+    assert_eq!(group.token, token_a);
+    assert_eq!(group.accepted_tokens.len(), 2);
+
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute_with_token(&admin, &group_id, &token_a);
+    client.contribute_with_token(&member1, &group_id, &token_b);
+
+    let round = client.get_round_status(&group_id, &1);
+    assert!(round.is_complete);
+    assert_eq!(round.total_contributed, 2_000_000);
+    assert_eq!(
+        round.token_contributions.get(token_a.clone()).unwrap(),
+        1_000_000
+    );
+    assert_eq!(
+        round.token_contributions.get(token_b.clone()).unwrap(),
+        1_000_000
+    );
+
+    client.distribute_payout(&group_id);
+
+    let token_a_client = TokenClient::new(&env, &token_a);
+    let token_b_client = TokenClient::new(&env, &token_b);
+    assert_eq!(token_a_client.balance(&admin), 10_000_000);
+    assert_eq!(token_b_client.balance(&admin), 1_000_000);
+    assert_eq!(token_b_client.balance(&member1), 9_000_000);
+}
+
+#[test]
+fn test_multi_token_contribution_rejects_unaccepted_token() {
+    let (env, admin, client, token) = setup_env();
+    let member1 = Address::generate(&env);
+    let unaccepted_token_admin = Address::generate(&env);
+    let unaccepted_token_id = env.register_stellar_asset_contract_v2(unaccepted_token_admin);
+    let unaccepted_token = unaccepted_token_id.address();
+
+    let mut accepted_tokens = Vec::new(&env);
+    accepted_tokens.push_back(token);
+
+    let group_id = client.create_multi_token_group(
+        &admin,
+        &String::from_str(&env, "Rejected Token Group"),
+        &accepted_tokens,
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    assert_eq!(
+        client.try_contribute_with_token(&admin, &group_id, &unaccepted_token),
+        Err(Ok(ContractError::InvalidAmount))
+    );
 }
 
 #[test]

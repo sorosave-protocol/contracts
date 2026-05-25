@@ -18,13 +18,23 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
         return Err(ContractError::RoundNotComplete);
     }
 
-    // Transfer the pot to the round's recipient
-    let token_client = soroban_sdk::token::Client::new(env, &group.token);
-    token_client.transfer(
-        &env.current_contract_address(),
-        &round_info.recipient,
-        &round_info.total_contributed,
-    );
+    // Transfer each token pot to the round's recipient.
+    let contract_address = env.current_contract_address();
+    if round_info.token_contributions.is_empty() {
+        let token_client = soroban_sdk::token::Client::new(env, &group.token);
+        token_client.transfer(
+            &contract_address,
+            &round_info.recipient,
+            &round_info.total_contributed,
+        );
+    } else {
+        for (token, amount) in round_info.token_contributions.iter() {
+            if amount > 0 {
+                let token_client = soroban_sdk::token::Client::new(env, &token);
+                token_client.transfer(&contract_address, &round_info.recipient, &amount);
+            }
+        }
+    }
 
     env.events().publish(
         (crate::symbol_short!("payout"),),
@@ -50,6 +60,7 @@ pub fn distribute_payout(env: &Env, group_id: u64) -> Result<(), ContractError> 
             round_number: group.current_round,
             recipient: next_recipient,
             contributions: Map::new(env),
+            token_contributions: Map::new(env),
             total_contributed: 0,
             is_complete: false,
             deadline: env.ledger().timestamp() + group.cycle_length,

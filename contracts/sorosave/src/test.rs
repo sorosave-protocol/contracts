@@ -50,6 +50,8 @@ fn test_create_group() {
     assert_eq!(group.max_members, 5);
     assert_eq!(group.status, GroupStatus::Forming);
     assert_eq!(group.members.len(), 1);
+    assert!(!group.auto_restart);
+    assert_eq!(group.restart_opt_outs.len(), 0);
 }
 
 #[test]
@@ -149,6 +151,99 @@ fn test_full_cycle() {
     // Group should be completed
     let group = client.get_group(&group_id);
     assert_eq!(group.status, GroupStatus::Completed);
+}
+
+#[test]
+fn test_auto_restart_group_starts_new_cycle() {
+    let (env, admin, client, _token) = setup_env();
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+
+    let member1 = Address::generate(&env);
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let group_id = client.create_recurring_group(
+        &admin,
+        &String::from_str(&env, "Recurring Cycle Test"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.distribute_payout(&group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.distribute_payout(&group_id);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Active);
+    assert_eq!(group.current_round, 1);
+    assert_eq!(group.total_rounds, 2);
+    assert_eq!(group.members.len(), 2);
+    assert_eq!(group.restart_opt_outs.len(), 0);
+    assert_eq!(group.payout_order.get(0).unwrap(), member1);
+    assert_eq!(client.get_current_recipient(&group_id), member1);
+}
+
+#[test]
+fn test_auto_restart_removes_opted_out_member() {
+    let (env, admin, client, _token) = setup_env();
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+    token_sac.mint(&member2, &10_000_000);
+
+    let group_id = client.create_recurring_group(
+        &admin,
+        &String::from_str(&env, "Opt Out Cycle Test"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.opt_out_next_cycle(&member2, &group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.contribute(&member2, &group_id);
+    client.distribute_payout(&group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.contribute(&member2, &group_id);
+    client.distribute_payout(&group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.contribute(&member2, &group_id);
+    client.distribute_payout(&group_id);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Active);
+    assert_eq!(group.current_round, 1);
+    assert_eq!(group.total_rounds, 2);
+    assert_eq!(group.members.len(), 2);
+    assert_eq!(group.restart_opt_outs.len(), 0);
+    assert_eq!(client.get_member_groups(&member2).len(), 0);
 }
 
 #[test]

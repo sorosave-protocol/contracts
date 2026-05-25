@@ -49,6 +49,27 @@ impl SoroSaveContract {
         )
     }
 
+    /// Create a group that automatically starts another cycle after completion.
+    pub fn create_recurring_group(
+        env: Env,
+        admin: Address,
+        name: String,
+        token: Address,
+        contribution_amount: i128,
+        cycle_length: u64,
+        max_members: u32,
+    ) -> Result<u64, ContractError> {
+        group::create_recurring_group(
+            &env,
+            admin,
+            name,
+            token,
+            contribution_amount,
+            cycle_length,
+            max_members,
+        )
+    }
+
     /// Join an existing group that is still forming.
     pub fn join_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
         group::join_group(&env, member, group_id)
@@ -57,6 +78,15 @@ impl SoroSaveContract {
     /// Leave a group (only allowed while group is still forming).
     pub fn leave_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
         group::leave_group(&env, member, group_id)
+    }
+
+    /// Opt out of the next cycle for a recurring group.
+    pub fn opt_out_next_cycle(
+        env: Env,
+        member: Address,
+        group_id: u64,
+    ) -> Result<(), ContractError> {
+        group::opt_out_next_cycle(&env, member, group_id)
     }
 
     /// Start the group rounds. Only the group admin can call this.

@@ -24,6 +24,8 @@ pub struct SavingsGroup {
     pub max_members: u32,
     pub members: Vec<Address>,
     pub payout_order: Vec<Address>,
+    pub auto_restart: bool,
+    pub restart_opt_outs: Vec<Address>,
     pub current_round: u32,
     pub total_rounds: u32,
     pub status: GroupStatus,

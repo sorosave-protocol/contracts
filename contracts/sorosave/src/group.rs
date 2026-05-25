@@ -4,6 +4,15 @@ use crate::errors::ContractError;
 use crate::storage;
 use crate::types::{GroupStatus, RoundInfo, SavingsGroup};
 
+struct GroupConfig {
+    name: String,
+    token: Address,
+    contribution_amount: i128,
+    cycle_length: u64,
+    max_members: u32,
+    auto_restart: bool,
+}
+
 pub fn create_group(
     env: &Env,
     admin: Address,
@@ -13,12 +22,54 @@ pub fn create_group(
     cycle_length: u64,
     max_members: u32,
 ) -> Result<u64, ContractError> {
+    create_group_from_config(
+        env,
+        admin,
+        GroupConfig {
+            name,
+            token,
+            contribution_amount,
+            cycle_length,
+            max_members,
+            auto_restart: false,
+        },
+    )
+}
+
+pub fn create_recurring_group(
+    env: &Env,
+    admin: Address,
+    name: String,
+    token: Address,
+    contribution_amount: i128,
+    cycle_length: u64,
+    max_members: u32,
+) -> Result<u64, ContractError> {
+    create_group_from_config(
+        env,
+        admin,
+        GroupConfig {
+            name,
+            token,
+            contribution_amount,
+            cycle_length,
+            max_members,
+            auto_restart: true,
+        },
+    )
+}
+
+fn create_group_from_config(
+    env: &Env,
+    admin: Address,
+    config: GroupConfig,
+) -> Result<u64, ContractError> {
     admin.require_auth();
 
-    if contribution_amount <= 0 {
+    if config.contribution_amount <= 0 {
         return Err(ContractError::InvalidAmount);
     }
-    if max_members < 2 {
+    if config.max_members < 2 {
         return Err(ContractError::InsufficientMembers);
     }
 
@@ -30,14 +81,16 @@ pub fn create_group(
 
     let group = SavingsGroup {
         id: group_id,
-        name,
+        name: config.name,
         admin: admin.clone(),
-        token,
-        contribution_amount,
-        cycle_length,
-        max_members,
+        token: config.token,
+        contribution_amount: config.contribution_amount,
+        cycle_length: config.cycle_length,
+        max_members: config.max_members,
         members,
         payout_order: Vec::new(env),
+        auto_restart: config.auto_restart,
+        restart_opt_outs: Vec::new(env),
         current_round: 0,
         total_rounds: 0,
         status: GroupStatus::Forming,
@@ -117,6 +170,42 @@ pub fn leave_group(env: &Env, member: Address, group_id: u64) -> Result<(), Cont
 
     env.events()
         .publish((crate::symbol_short!("grp_leav"),), (group_id, member));
+
+    Ok(())
+}
+
+pub fn opt_out_next_cycle(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
+    member.require_auth();
+
+    let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if !group.auto_restart || group.status != GroupStatus::Active {
+        return Err(ContractError::GroupNotActive);
+    }
+
+    let mut is_member = false;
+    for current_member in group.members.iter() {
+        if current_member == member {
+            is_member = true;
+            break;
+        }
+    }
+
+    if !is_member {
+        return Err(ContractError::NotMember);
+    }
+
+    for opted_out in group.restart_opt_outs.iter() {
+        if opted_out == member {
+            return Ok(());
+        }
+    }
+
+    group.restart_opt_outs.push_back(member.clone());
+    storage::set_group(env, &group);
+
+    env.events()
+        .publish((crate::symbol_short!("opt_out"),), (group_id, member));
 
     Ok(())
 }

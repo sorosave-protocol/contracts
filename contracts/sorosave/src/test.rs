@@ -172,6 +172,64 @@ fn test_member_groups() {
 }
 
 #[test]
+fn test_reputation_defaults_to_zero() {
+    let (env, _, client, _) = setup_env();
+    let member = Address::generate(&env);
+
+    let reputation = client.get_reputation(&member);
+    assert_eq!(reputation.groups_completed, 0);
+    assert_eq!(reputation.on_time_contributions, 0);
+    assert_eq!(reputation.defaults, 0);
+}
+
+#[test]
+fn test_reputation_updates_on_contribution_and_completion() {
+    let (env, admin, client, _) = setup_env();
+    let member1 = Address::generate(&env);
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Reputation Test"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+
+    let admin_reputation = client.get_reputation(&admin);
+    let member_reputation = client.get_reputation(&member1);
+    assert_eq!(admin_reputation.on_time_contributions, 1);
+    assert_eq!(member_reputation.on_time_contributions, 1);
+    assert_eq!(admin_reputation.groups_completed, 0);
+    assert_eq!(member_reputation.groups_completed, 0);
+
+    client.distribute_payout(&group_id);
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.distribute_payout(&group_id);
+
+    let admin_reputation = client.get_reputation(&admin);
+    let member_reputation = client.get_reputation(&member1);
+    assert_eq!(admin_reputation.on_time_contributions, 2);
+    assert_eq!(member_reputation.on_time_contributions, 2);
+    assert_eq!(admin_reputation.groups_completed, 1);
+    assert_eq!(member_reputation.groups_completed, 1);
+    assert_eq!(admin_reputation.defaults, 0);
+    assert_eq!(member_reputation.defaults, 0);
+}
+
+#[test]
 fn test_pause_resume_group() {
     let (env, admin, client, token) = setup_env();
     let group_id = create_test_group(&env, &client, &admin, &token);

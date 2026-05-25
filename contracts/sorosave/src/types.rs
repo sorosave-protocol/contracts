@@ -51,6 +51,15 @@ pub struct Dispute {
     pub raised_at: u64,
 }
 
+/// Tracks member reputation across savings groups.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct MemberReputation {
+    pub groups_completed: u32,
+    pub on_time_contributions: u32,
+    pub defaults: u32,
+}
+
 /// Storage keys for all contract data.
 #[contracttype]
 #[derive(Clone)]
@@ -60,5 +69,6 @@ pub enum DataKey {
     Group(u64),
     Round(u64, u32),
     MemberGroups(Address),
+    MemberReputation(Address),
     Dispute(u64),
 }

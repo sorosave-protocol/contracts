@@ -1,6 +1,6 @@
 use soroban_sdk::{Address, Env, Vec};
 
-use crate::types::{DataKey, Dispute, RoundInfo, SavingsGroup};
+use crate::types::{DataKey, Dispute, MemberReputation, RoundInfo, SavingsGroup};
 
 const INSTANCE_TTL_THRESHOLD: u32 = 100;
 const INSTANCE_TTL_EXTEND: u32 = 500;
@@ -101,6 +101,46 @@ pub fn remove_member_group(env: &Env, member: &Address, group_id: u64) {
     }
     env.storage().persistent().set(&key, &new_groups);
     extend_persistent_ttl(env, &key);
+}
+
+// --- Member Reputation ---
+
+pub fn get_member_reputation(env: &Env, member: &Address) -> MemberReputation {
+    let key = DataKey::MemberReputation(member.clone());
+    let result = env.storage().persistent().get(&key);
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+    result.unwrap_or(MemberReputation {
+        groups_completed: 0,
+        on_time_contributions: 0,
+        defaults: 0,
+    })
+}
+
+pub fn set_member_reputation(env: &Env, member: &Address, reputation: &MemberReputation) {
+    let key = DataKey::MemberReputation(member.clone());
+    env.storage().persistent().set(&key, reputation);
+    extend_persistent_ttl(env, &key);
+}
+
+pub fn increment_on_time_contributions(env: &Env, member: &Address) {
+    let mut reputation = get_member_reputation(env, member);
+    reputation.on_time_contributions = reputation.on_time_contributions.saturating_add(1);
+    set_member_reputation(env, member, &reputation);
+}
+
+pub fn increment_groups_completed(env: &Env, member: &Address) {
+    let mut reputation = get_member_reputation(env, member);
+    reputation.groups_completed = reputation.groups_completed.saturating_add(1);
+    set_member_reputation(env, member, &reputation);
+}
+
+#[allow(dead_code)]
+pub fn increment_defaults(env: &Env, member: &Address) {
+    let mut reputation = get_member_reputation(env, member);
+    reputation.defaults = reputation.defaults.saturating_add(1);
+    set_member_reputation(env, member, &reputation);
 }
 
 // --- Dispute ---

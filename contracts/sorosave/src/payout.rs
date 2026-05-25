@@ -84,3 +84,39 @@ pub fn get_current_recipient(env: &Env, group_id: u64) -> Result<Address, Contra
 
     Ok(round_info.recipient)
 }
+
+pub fn get_round_history(
+    env: &Env,
+    group_id: u64,
+    offset: u32,
+    limit: u32,
+) -> Result<Vec<RoundInfo>, ContractError> {
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+    let mut history = Vec::new(env);
+
+    if limit == 0 {
+        return Ok(history);
+    }
+
+    let mut skipped = 0;
+    let mut round_number = 1;
+
+    while round_number <= group.current_round {
+        if let Some(round_info) = storage::get_round(env, group_id, round_number) {
+            if round_info.is_complete {
+                if skipped < offset {
+                    skipped += 1;
+                } else {
+                    history.push_back(round_info);
+                    if history.len() >= limit {
+                        break;
+                    }
+                }
+            }
+        }
+
+        round_number += 1;
+    }
+
+    Ok(history)
+}

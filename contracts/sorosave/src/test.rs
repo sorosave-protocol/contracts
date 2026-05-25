@@ -152,6 +152,59 @@ fn test_full_cycle() {
 }
 
 #[test]
+fn test_round_history_pagination() {
+    let (env, admin, client, _token) = setup_env();
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin);
+    let token_sac = StellarAssetClient::new(&env, &token_id.address());
+    token_sac.mint(&admin, &10_000_000);
+    token_sac.mint(&member1, &10_000_000);
+    token_sac.mint(&member2, &10_000_000);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Round History Test"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&member1, &group_id);
+    client.contribute(&member2, &group_id);
+
+    let first_page = client.get_round_history(&group_id, &0, &10);
+    assert_eq!(first_page.len(), 1);
+    assert_eq!(first_page.get(0).unwrap().round_number, 1);
+    assert_eq!(first_page.get(0).unwrap().recipient, admin);
+    assert_eq!(first_page.get(0).unwrap().total_contributed, 3_000_000);
+    assert!(first_page.get(0).unwrap().is_complete);
+
+    client.distribute_payout(&group_id);
+    client.contribute(&admin, &group_id);
+
+    let history_before_second_complete = client.get_round_history(&group_id, &0, &10);
+    assert_eq!(history_before_second_complete.len(), 1);
+
+    client.contribute(&member1, &group_id);
+    client.contribute(&member2, &group_id);
+
+    let second_page = client.get_round_history(&group_id, &1, &1);
+    assert_eq!(second_page.len(), 1);
+    assert_eq!(second_page.get(0).unwrap().round_number, 2);
+    assert_eq!(second_page.get(0).unwrap().recipient, member1);
+
+    assert_eq!(client.get_round_history(&group_id, &0, &0).len(), 0);
+    assert_eq!(client.get_round_history(&group_id, &5, &2).len(), 0);
+}
+
+#[test]
 fn test_member_groups() {
     let (env, admin, client, token) = setup_env();
 

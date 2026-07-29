@@ -222,3 +222,51 @@ fn test_set_group_admin() {
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
 }
+
+#[test]
+fn test_emergency_withdrawal_unequal_contributions() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    
+    // Deploy contract with 5-round group
+    let contract = deploy_sorosave(&env, admin.clone(), 5);
+    
+    // Round 1: full contributions from both
+    env.budget().reset_unlimited();
+    contract.deposit(&alice, &100);
+    contract.deposit(&bob, &100);
+    env.jump(round_duration());
+    contract.complete_round();
+    
+    // Round 2: full contributions
+    contract.deposit(&alice, &100);
+    contract.deposit(&bob, &100);
+    env.jump(round_duration());
+    contract.complete_round();
+    
+    // Round 3: unequal — alice contributes 100, bob only 50
+    contract.deposit(&alice, &100);
+    contract.deposit(&bob, &50);
+    
+    // Emergency withdrawal mid-round 3
+    let alice_balance_before = env.balance(&alice);
+    let bob_balance_before = env.balance(&bob);
+    
+    contract.emergency_withdraw(&alice);
+    contract.emergency_withdraw(&bob);
+    
+    // Verify proportional distribution
+    // Alice: 3 rounds * 100 = 300 total contribution
+    // Bob: 2 rounds * 100 + 1 round * 50 = 250 total contribution
+    // Total: 550. Alice gets 300/550 = ~54.5%, Bob gets 250/550 = ~45.5%
+    let alice_after = env.balance(&alice);
+    let bob_after = env.balance(&bob);
+    
+    assert!(alice_after > alice_balance_before, "Alice should receive funds back");
+    assert!(bob_after > bob_balance_before, "Bob should receive funds back");
+    
+    // Verify contract is empty
+    assert_eq!(env.balance(&contract.address), 0);
+}

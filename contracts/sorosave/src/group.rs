@@ -53,7 +53,12 @@ pub fn create_group(
     Ok(group_id)
 }
 
-pub fn join_group(env: &Env, member: Address, group_id: u64) -> Result<(), ContractError> {
+pub fn join_group(
+    env: &Env,
+    member: Address,
+    group_id: u64,
+    referred_by: Option<Address>,
+) -> Result<(), ContractError> {
     member.require_auth();
 
     let mut group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
@@ -66,16 +71,38 @@ pub fn join_group(env: &Env, member: Address, group_id: u64) -> Result<(), Contr
         return Err(ContractError::GroupFull);
     }
 
-    // Check if already a member
+    let mut referrer_is_member = false;
     for m in group.members.iter() {
         if m == member {
             return Err(ContractError::AlreadyMember);
+        }
+        if let Some(referrer) = referred_by.clone() {
+            if m == referrer {
+                referrer_is_member = true;
+            }
+        }
+    }
+
+    if let Some(referrer) = referred_by.clone() {
+        if referrer == member {
+            return Err(ContractError::Unauthorized);
+        }
+        if !referrer_is_member {
+            return Err(ContractError::NotMember);
         }
     }
 
     group.members.push_back(member.clone());
     storage::set_group(env, &group);
     storage::add_member_group(env, &member, group_id);
+
+    if let Some(referrer) = referred_by {
+        storage::increment_referral_count(env, &referrer);
+        env.events().publish(
+            (crate::symbol_short!("refer"),),
+            (group_id, referrer, member.clone()),
+        );
+    }
 
     env.events()
         .publish((crate::symbol_short!("grp_join"),), (group_id, member));
@@ -170,4 +197,8 @@ pub fn get_group(env: &Env, group_id: u64) -> Result<SavingsGroup, ContractError
 
 pub fn get_member_groups(env: &Env, member: Address) -> Vec<u64> {
     storage::get_member_groups(env, &member)
+}
+
+pub fn get_referral_count(env: &Env, member: Address) -> u32 {
+    storage::get_referral_count(env, &member)
 }

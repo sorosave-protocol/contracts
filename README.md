@@ -36,3 +36,8 @@ cargo test
 ## License
 
 MIT
+
+## Navigation
+
+- [Back to `REPOS`](../README.md)
+- [Back to `AI_REVENUE_SPRINT_100_24H`](../../README.md)

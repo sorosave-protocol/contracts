@@ -50,8 +50,13 @@ impl SoroSaveContract {
     }
 
     /// Join an existing group that is still forming.
-    pub fn join_group(env: Env, member: Address, group_id: u64) -> Result<(), ContractError> {
-        group::join_group(&env, member, group_id)
+    pub fn join_group(
+        env: Env,
+        member: Address,
+        group_id: u64,
+        referred_by: Option<Address>,
+    ) -> Result<(), ContractError> {
+        group::join_group(&env, member, group_id, referred_by)
     }
 
     /// Leave a group (only allowed while group is still forming).
@@ -72,6 +77,11 @@ impl SoroSaveContract {
     /// Get all group IDs a member belongs to.
     pub fn get_member_groups(env: Env, member: Address) -> Vec<u64> {
         group::get_member_groups(&env, member)
+    }
+
+    /// Get the number of successful joins referred by a member.
+    pub fn get_referral_count(env: Env, member: Address) -> u32 {
+        group::get_referral_count(&env, member)
     }
 
     // ─── Contributions ──────────────────────────────────────────────

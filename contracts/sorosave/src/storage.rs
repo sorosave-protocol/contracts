@@ -103,6 +103,24 @@ pub fn remove_member_group(env: &Env, member: &Address, group_id: u64) {
     extend_persistent_ttl(env, &key);
 }
 
+// --- Referrals ---
+
+pub fn get_referral_count(env: &Env, member: &Address) -> u32 {
+    let key = DataKey::ReferralCount(member.clone());
+    let result = env.storage().persistent().get(&key);
+    if result.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+    result.unwrap_or(0)
+}
+
+pub fn increment_referral_count(env: &Env, member: &Address) {
+    let key = DataKey::ReferralCount(member.clone());
+    let count = get_referral_count(env, member) + 1;
+    env.storage().persistent().set(&key, &count);
+    extend_persistent_ttl(env, &key);
+}
+
 // --- Dispute ---
 
 #[allow(dead_code)]

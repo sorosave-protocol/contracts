@@ -60,11 +60,27 @@ fn test_join_group() {
     let member1 = Address::generate(&env);
     let member2 = Address::generate(&env);
 
-    client.join_group(&member1, &group_id);
-    client.join_group(&member2, &group_id);
+    client.join_group(&member1, &group_id, &None);
+    client.join_group(&member2, &group_id, &None);
 
     let group = client.get_group(&group_id);
     assert_eq!(group.members.len(), 3); // admin + 2 members
+}
+
+#[test]
+fn test_referral_count_updates_on_referred_join() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+
+    client.join_group(&member1, &group_id, &None);
+    client.join_group(&member2, &group_id, &Some(member1.clone()));
+
+    assert_eq!(client.get_referral_count(&member1), 1);
+    assert_eq!(client.get_referral_count(&admin), 0);
+    assert_eq!(client.get_referral_count(&member2), 0);
 }
 
 #[test]
@@ -73,7 +89,7 @@ fn test_leave_group() {
     let group_id = create_test_group(&env, &client, &admin, &token);
 
     let member1 = Address::generate(&env);
-    client.join_group(&member1, &group_id);
+    client.join_group(&member1, &group_id, &None);
 
     assert_eq!(client.get_group(&group_id).members.len(), 2);
 
@@ -87,7 +103,7 @@ fn test_start_group() {
     let group_id = create_test_group(&env, &client, &admin, &token);
 
     let member1 = Address::generate(&env);
-    client.join_group(&member1, &group_id);
+    client.join_group(&member1, &group_id, &None);
 
     client.start_group(&admin, &group_id);
 
@@ -104,7 +120,7 @@ fn test_full_cycle() {
     let group_id = create_test_group(&env, &client, &admin, &token);
 
     let member1 = Address::generate(&env);
-    client.join_group(&member1, &group_id);
+    client.join_group(&member1, &group_id, &None);
 
     // Mint tokens to member
     let _token_admin_client = StellarAssetClient::new(&env, &token);
@@ -124,7 +140,7 @@ fn test_full_cycle() {
         &86400,
         &5,
     );
-    client.join_group(&member1, &group_id);
+    client.join_group(&member1, &group_id, &None);
     client.start_group(&admin, &group_id);
 
     // Round 1: both contribute
@@ -177,7 +193,7 @@ fn test_pause_resume_group() {
     let group_id = create_test_group(&env, &client, &admin, &token);
 
     let member1 = Address::generate(&env);
-    client.join_group(&member1, &group_id);
+    client.join_group(&member1, &group_id, &None);
     client.start_group(&admin, &group_id);
 
     // Pause
@@ -195,7 +211,7 @@ fn test_dispute_flow() {
     let group_id = create_test_group(&env, &client, &admin, &token);
 
     let member1 = Address::generate(&env);
-    client.join_group(&member1, &group_id);
+    client.join_group(&member1, &group_id, &None);
     client.start_group(&admin, &group_id);
 
     // Member raises dispute

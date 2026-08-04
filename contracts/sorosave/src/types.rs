@@ -60,5 +60,6 @@ pub enum DataKey {
     Group(u64),
     Round(u64, u32),
     MemberGroups(Address),
+    ReferralCount(Address),
     Dispute(u64),
 }

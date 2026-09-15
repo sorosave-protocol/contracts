@@ -1,4 +1,8 @@
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String};
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{Client as TokenClient, StellarAssetClient},
+    Address, Env, String, Vec as SorobanVec,
+};
 
 use crate::types::GroupStatus;
 use crate::{SoroSaveContract, SoroSaveContractClient};
@@ -149,6 +153,98 @@ fn test_full_cycle() {
     // Group should be completed
     let group = client.get_group(&group_id);
     assert_eq!(group.status, GroupStatus::Completed);
+}
+
+#[test]
+fn test_complete_group_lifecycle_with_five_members() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let contract_id = env.register(SoroSaveContract, (&admin,));
+    let client = SoroSaveContractClient::new(&env, &contract_id);
+
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_address = token_id.address();
+    let stellar_asset_client = StellarAssetClient::new(&env, &token_address);
+    let token_client = TokenClient::new(&env, &token_address);
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    let member4 = Address::generate(&env);
+    let members = [
+        admin.clone(),
+        member1.clone(),
+        member2.clone(),
+        member3.clone(),
+        member4.clone(),
+    ];
+    let initial_balance = 10_000_000_i128;
+    let contribution_amount = 1_000_000_i128;
+    let expected_round_pot = contribution_amount * members.len() as i128;
+
+    for member in members.iter() {
+        stellar_asset_client.mint(member, &initial_balance);
+    }
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Five Member Lifecycle"),
+        &token_address,
+        &contribution_amount,
+        &86400,
+        &(members.len() as u32),
+    );
+
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+    client.join_group(&member4, &group_id);
+    client.start_group(&admin, &group_id);
+
+    let started_group = client.get_group(&group_id);
+    assert_eq!(started_group.status, GroupStatus::Active);
+    assert_eq!(started_group.total_rounds, 5);
+    assert_eq!(started_group.payout_order.len(), 5);
+
+    let mut recipients = SorobanVec::new(&env);
+    for round_number in 1..=5 {
+        let round = client.get_round_status(&group_id, &round_number);
+        for recipient in recipients.iter() {
+            assert_ne!(recipient, round.recipient.clone());
+        }
+        recipients.push_back(round.recipient.clone());
+
+        for member in members.iter() {
+            client.contribute(member, &group_id);
+        }
+
+        let completed_round = client.get_round_status(&group_id, &round_number);
+        assert!(completed_round.is_complete);
+        assert_eq!(completed_round.total_contributed, expected_round_pot);
+
+        client.distribute_payout(&group_id);
+    }
+
+    assert_eq!(recipients.len(), members.len() as u32);
+
+    for member in members.iter() {
+        let mut received_payout = false;
+        for recipient in recipients.iter() {
+            if recipient == member.clone() {
+                received_payout = true;
+                break;
+            }
+        }
+        assert!(received_payout);
+        assert_eq!(token_client.balance(member), initial_balance);
+    }
+
+    let completed_group = client.get_group(&group_id);
+    assert_eq!(completed_group.status, GroupStatus::Completed);
+    assert_eq!(completed_group.current_round, 5);
 }
 
 #[test]

@@ -13,6 +13,8 @@ mod types;
 pub use errors::ContractError;
 pub use types::*;
 
+const CONTRACT_VERSION: u32 = 1;
+
 #[contract]
 pub struct SoroSaveContract;
 
@@ -72,6 +74,11 @@ impl SoroSaveContract {
     /// Get all group IDs a member belongs to.
     pub fn get_member_groups(env: Env, member: Address) -> Vec<u64> {
         group::get_member_groups(&env, member)
+    }
+
+    /// Expose the contract version for compatibility checks.
+    pub fn version(_env: Env) -> u32 {
+        CONTRACT_VERSION
     }
 
     // ─── Contributions ──────────────────────────────────────────────

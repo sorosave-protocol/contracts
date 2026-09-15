@@ -4,6 +4,7 @@ use soroban_sdk::{
     Address, Env, String, Vec as SorobanVec,
 };
 
+use crate::errors::ContractError;
 use crate::types::GroupStatus;
 use crate::{SoroSaveContract, SoroSaveContractClient};
 
@@ -374,4 +375,80 @@ fn test_set_group_admin() {
 
     let group = client.get_group(&group_id);
     assert_eq!(group.admin, new_admin);
+}
+
+#[test]
+fn test_concurrent_contributions_in_any_order() {
+    let (env, admin, client, _token) = setup_env();
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin.clone());
+    let token_client = StellarAssetClient::new(&env, &token_id.address());
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    let member4 = Address::generate(&env);
+
+    for member in [&admin, &member1, &member2, &member3, &member4] {
+        token_client.mint(member, &10_000_000);
+    }
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Concurrent Contributions Test"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+    client.join_group(&member4, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.contribute(&member3, &group_id);
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.total_contributed, 1_000_000);
+    assert!(!round.is_complete);
+
+    client.contribute(&admin, &group_id);
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.total_contributed, 2_000_000);
+    assert!(!round.is_complete);
+
+    client.contribute(&member1, &group_id);
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.total_contributed, 3_000_000);
+    assert!(!round.is_complete);
+
+    client.contribute(&member4, &group_id);
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.total_contributed, 4_000_000);
+    assert!(!round.is_complete);
+
+    client.contribute(&member2, &group_id);
+    let round = client.get_round_status(&group_id, &1);
+    assert_eq!(round.total_contributed, 5_000_000);
+    assert!(round.is_complete);
+
+    let second_group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Duplicate Contribution Test"),
+        &token_id.address(),
+        &1_000_000,
+        &86400,
+        &5,
+    );
+    client.join_group(&member1, &second_group_id);
+    client.start_group(&admin, &second_group_id);
+
+    client.contribute(&member1, &second_group_id);
+    let err = client
+        .try_contribute(&member1, &second_group_id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ContractError::AlreadyContributed);
 }

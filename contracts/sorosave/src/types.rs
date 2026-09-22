@@ -40,6 +40,7 @@ pub struct RoundInfo {
     pub total_contributed: i128,
     pub is_complete: bool,
     pub deadline: u64,
+    pub deadline_extensions: u32,
 }
 
 /// Dispute information for a group.

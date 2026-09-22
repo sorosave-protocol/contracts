@@ -48,6 +48,52 @@ pub fn resume_group(env: &Env, admin: Address, group_id: u64) -> Result<(), Cont
     Ok(())
 }
 
+pub fn extend_deadline(
+    env: &Env,
+    admin: Address,
+    group_id: u64,
+    extra_seconds: u64,
+) -> Result<(), ContractError> {
+    admin.require_auth();
+
+    let group = storage::get_group(env, group_id).ok_or(ContractError::GroupNotFound)?;
+
+    if admin != group.admin && admin != storage::get_admin(env) {
+        return Err(ContractError::Unauthorized);
+    }
+
+    if group.status != GroupStatus::Active {
+        return Err(ContractError::GroupNotActive);
+    }
+
+    if extra_seconds == 0 || extra_seconds > group.cycle_length {
+        return Err(ContractError::DeadlineExtensionTooLarge);
+    }
+
+    let mut round_info = storage::get_round(env, group_id, group.current_round)
+        .ok_or(ContractError::RoundNotActive)?;
+
+    if round_info.deadline_extensions >= 2 {
+        return Err(ContractError::DeadlineExtensionLimitReached);
+    }
+
+    round_info.deadline += extra_seconds;
+    round_info.deadline_extensions += 1;
+    storage::set_round(env, group_id, &round_info);
+
+    env.events().publish(
+        (crate::symbol_short!("dl_ext"),),
+        (
+            group_id,
+            group.current_round,
+            round_info.deadline,
+            round_info.deadline_extensions,
+        ),
+    );
+
+    Ok(())
+}
+
 pub fn raise_dispute(
     env: &Env,
     member: Address,

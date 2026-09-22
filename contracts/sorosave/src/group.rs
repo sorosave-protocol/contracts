@@ -153,6 +153,7 @@ pub fn start_group(env: &Env, admin: Address, group_id: u64) -> Result<(), Contr
         total_contributed: 0,
         is_complete: false,
         deadline: env.ledger().timestamp() + group.cycle_length,
+        deadline_extensions: 0,
     };
 
     storage::set_round(env, group_id, &round_info);

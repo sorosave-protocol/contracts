@@ -18,6 +18,8 @@ pub struct SavingsGroup {
     pub id: u64,
     pub name: String,
     pub admin: Address,
+    pub admins: Vec<Address>,
+    pub admin_threshold: u32,
     pub token: Address,
     pub contribution_amount: i128,
     pub cycle_length: u64,
@@ -51,6 +53,24 @@ pub struct Dispute {
     pub raised_at: u64,
 }
 
+/// Sensitive group action that requires multi-admin approval when enabled.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum MultiSigAction {
+    Pause,
+    Resume,
+    EmergencyWithdraw,
+}
+
+/// Pending approval state for a sensitive multi-admin action.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct MultiSigProposal {
+    pub action: MultiSigAction,
+    pub approvals: Vec<Address>,
+    pub created_at: u64,
+}
+
 /// Storage keys for all contract data.
 #[contracttype]
 #[derive(Clone)]
@@ -61,4 +81,5 @@ pub enum DataKey {
     Round(u64, u32),
     MemberGroups(Address),
     Dispute(u64),
+    MultiSigProposal(u64, MultiSigAction),
 }

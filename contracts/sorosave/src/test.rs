@@ -452,3 +452,71 @@ fn test_concurrent_contributions_in_any_order() {
         .unwrap();
     assert_eq!(err, ContractError::AlreadyContributed);
 }
+
+
+#[test]
+fn test_contribution_and_payout_with_real_token_balances() {
+    let (env, admin, client, _token) = setup_env();
+
+    let mint_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(mint_admin.clone());
+    let token_client = StellarAssetClient::new(&env, &token_id.address());
+
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_balance = 5_000_000i128;
+    let contribution_amount = 1_000_000i128;
+
+    token_client.mint(&admin, &initial_balance);
+    token_client.mint(&member1, &initial_balance);
+    token_client.mint(&member2, &initial_balance);
+
+    let group_id = client.create_group(
+        &admin,
+        &String::from_str(&env, "Token Balance Verification"),
+        &token_id.address(),
+        &contribution_amount,
+        &86400,
+        &3,
+    );
+
+    client.join_group(&member1, &group_id);
+    client.join_group(&member2, &group_id);
+    client.start_group(&admin, &group_id);
+
+    let contract_addr = env.current_contract_address();
+    assert_eq!(token_client.balance(&contract_addr), 0);
+
+    // Identify round 1 recipient
+    let recipient_round1 = client.get_current_recipient(&group_id);
+
+    // Admin contributes
+    client.contribute(&admin, &group_id);
+    assert_eq!(token_client.balance(&admin), initial_balance - contribution_amount);
+    assert_eq!(token_client.balance(&contract_addr), contribution_amount);
+
+    // Member 1 contributes
+    client.contribute(&member1, &group_id);
+    assert_eq!(token_client.balance(&member1), initial_balance - contribution_amount);
+    assert_eq!(token_client.balance(&contract_addr), contribution_amount * 2);
+
+    // Member 2 contributes
+    client.contribute(&member2, &group_id);
+    assert_eq!(token_client.balance(&member2), initial_balance - contribution_amount);
+    assert_eq!(token_client.balance(&contract_addr), contribution_amount * 3);
+
+    // Distribute payout
+    let expected_pot = contribution_amount * 3;
+    let recipient_pre_payout_balance = token_client.balance(&recipient_round1);
+
+    client.distribute_payout(&group_id);
+
+    // Verify contract balance returns to zero
+    assert_eq!(token_client.balance(&contract_addr), 0);
+
+    // Verify recipient received entire round pot
+    assert_eq!(
+        token_client.balance(&recipient_round1),
+        recipient_pre_payout_balance + expected_pot
+    );
+}

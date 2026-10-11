@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env, Map, String, Vec};
+use soroban_sdk::{token, Address, Env, Map, String, Vec};
 
 use crate::errors::ContractError;
 use crate::storage;
@@ -22,6 +22,16 @@ pub fn create_group(
         return Err(ContractError::InsufficientMembers);
     }
 
+    // Query token decimals and validate contribution amount precision
+    let token_client = token::Client::new(env, &token);
+    let token_decimals = token_client.decimals();
+    let min_unit = 10_i128.pow(token_decimals);
+    
+    // Ensure contribution_amount is a whole number of minimum token units
+    if contribution_amount % min_unit != 0 {
+        return Err(ContractError::InvalidAmount);
+    }
+
     let group_id = storage::get_group_counter(env) + 1;
     storage::set_group_counter(env, group_id);
 
@@ -34,6 +44,7 @@ pub fn create_group(
         admin: admin.clone(),
         token,
         contribution_amount,
+        token_decimals,
         cycle_length,
         max_members,
         members,

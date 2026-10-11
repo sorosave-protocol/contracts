@@ -3,6 +3,9 @@ resolver = "2"
 members = [
     "contracts/*",
 ]
+exclude = [
+    "contracts/sorosave/fuzz",
+]
 
 [workspace.dependencies]
 soroban-sdk = "22.0.1"

@@ -51,7 +51,15 @@ pub struct Dispute {
     pub raised_at: u64,
 }
 
-/// Storage keys for all contract data.
+/// Template for pre-configuring a savings group.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct GroupTemplate {
+    pub contribution_amount: i128,
+    pub cycle_length: u64,
+    pub max_members: u32,
+    pub token: Address,
+}
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
@@ -61,4 +69,5 @@ pub enum DataKey {
     Round(u64, u32),
     MemberGroups(Address),
     Dispute(u64),
+    GroupTemplate(String),
 }

@@ -452,3 +452,80 @@ fn test_concurrent_contributions_in_any_order() {
         .unwrap();
     assert_eq!(err, ContractError::AlreadyContributed);
 }
+
+
+#[test]
+fn test_unauthorized_pause_group() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    let unauthorized = Address::generate(&env);
+    let err = client
+        .try_pause_group(&unauthorized, &group_id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ContractError::Unauthorized);
+}
+
+#[test]
+fn test_unauthorized_resolve_dispute() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    client.raise_dispute(
+        &member1,
+        &group_id,
+        &String::from_str(&env, "Suspicious activity"),
+    );
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Disputed);
+
+    let unauthorized = Address::generate(&env);
+    let err = client
+        .try_resolve_dispute(&unauthorized, &group_id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ContractError::Unauthorized);
+}
+
+#[test]
+fn test_unauthorized_emergency_withdraw() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    // Non-protocol admin cannot trigger emergency withdraw
+    let non_admin = Address::generate(&env);
+    let err = client
+        .try_emergency_withdraw(&non_admin, &group_id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ContractError::Unauthorized);
+}
+
+#[test]
+fn test_unauthorized_contribute_non_member() {
+    let (env, admin, client, token) = setup_env();
+    let group_id = create_test_group(&env, &client, &admin, &token);
+
+    let member1 = Address::generate(&env);
+    client.join_group(&member1, &group_id);
+    client.start_group(&admin, &group_id);
+
+    let outsider = Address::generate(&env);
+    let err = client
+        .try_contribute(&outsider, &group_id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ContractError::NotMember);
+}
